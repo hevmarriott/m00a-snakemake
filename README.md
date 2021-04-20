@@ -9,6 +9,11 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
    * [Steps after running each module](#steps-after-running-each-module)
+4. DAG of workflow
+   * [counts](#counts)
+   * [variants](#variants)
+   * [fixvariants](#fixvariants)
+   * [haplotype](#haplotype)
 
 ## Obtaining
 Clone this repository using Git:
@@ -82,3 +87,14 @@ Once the bucket is created, you can then move the files i.e. delly.vcf.gz and in
 cd out_dir/results/
 gsutil mv delly/* gs://my_bucket
 ```
+
+## DAG of workflow
+The workflows below specify the input dependencies and output of each command. The advantage to using snakemake is that if a file did not generate output due to a failure with the cluster etc., then by invoking the command again, Snakemake will automatically decipher on which remaining files need to be generated, without duplicating outputs.
+
+### counts
+
+### variants
+
+### fixvariants
+
+### haplotype
