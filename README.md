@@ -8,11 +8,11 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
    * [How to create a Snakemake job execution profile](#how-to-create-a-Snakemake-job-execution-profile)
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
-         * [bam](#bam)
-         * [counts](#counts)
-         * [variants](#variants)
-         * [fixvariants](#fixvariants)
-         * [haplotype](#haplotype)
+     * [bam](#bam)
+     * [counts](#counts)
+     * [variants](#variants)
+     * [fixvariants](#fixvariants)
+     * [haplotype](#haplotype)
 
 ## Obtaining
 Clone this repository using Git:
