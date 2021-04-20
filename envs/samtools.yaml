@@ -1,0 +1,9 @@
+channels:
+  - bioconda
+
+dependencies:
+  - samtools=1.11
+  - bcftools=1.11
+  - vcftools=0.1.16
+  - htslib=1.11
+  - perl=5.26.2
