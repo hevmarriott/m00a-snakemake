@@ -92,9 +92,10 @@ gsutil mv delly/* gs://my_bucket
 The workflows below specify the input dependencies and output of each command. The advantage to using snakemake is that if a file did not generate output due to a failure with the cluster etc., then by invoking the command again, Snakemake will automatically decipher on which remaining files need to be generated, without duplicating outputs.
 
 ### counts
-
+![alt text](https://github.com/hevmarriott/m00a-snakemake/blob/main/counts.PNG)
 ### variants
-
+![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/variants.PNG)
 ### fixvariants
-
+![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/fixvariants.PNG)
 ### haplotype
+![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/haplotype.PNG)
