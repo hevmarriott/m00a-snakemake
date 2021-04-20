@@ -8,11 +8,7 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
    * [How to create a Snakemake job execution profile](#how-to-create-a-Snakemake-job-execution-profile)
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
-     * [bam](#bam)
-     * [counts](#counts)
-     * [variants](#variants)
-     * [fixvariants](#fixvariants)
-     * [haplotype](#haplotype)
+   * [Steps after running each module](#steps-after-running-each-module)
 
 ## Obtaining
 Clone this repository using Git:
@@ -67,12 +63,22 @@ Below are descriptions for each command in the workflow, with the parallel job a
 | fixvariants | Converts Delly to VCF output and reformats Whamg and Melt headers | -j 30 | N/A 
 | haplotype | Runs GATK Haplotype Caller on the bam files to obtain GVCFs which can be used to generate B allele frequency in Module00c | -j 10 | 120 GB
 
-#### bam
+### After running each sub-module
+You will find that after passing the first batch of samples through the pipeline, new subdirectories appear in the out_directory location in addition to those in the results directory. These include the aforementioned gatk-sv resource folders which are there for future running of the workflow without need to authenticate, but also a benchmarks folder. Within this, there is a folder for each step of the workflow, and subsequent files for each sample which documents the wall and CPU time of the job as well as various memory usage  and request metrics. More importantly, these are only created after the job has completed, which means that the creation of files is also one way to measure if the files for each sample are fully complete. 
 
-#### counts
+When you have all the appropriate files, you then need to upload them to Google Cloud Storage in order to be able downstream GATK-SV steps. This can be gone via the gsutil command line tool. 
 
-#### variants
+If you do not have a bucket, you can create one under your service account by performing:
+``` 
+gsutil mb gs://my_bucket 
+```
+and then setting the location of the bucket to us-central1 by performing:
+```
+gsutil mb -l US-CENTRAL1 on gs://my_bucket
+```
 
-#### fixvariants
-
-#### haplotype
+Once the bucket is created, you can then move the files i.e. delly.vcf.gz and index to your bucket:
+```
+cd out_dir/results/
+gsutil mv delly/* gs://my_bucket
+```
