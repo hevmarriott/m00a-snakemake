@@ -8,11 +8,11 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
    * [How to create a Snakemake job execution profile](#how-to-create-a-Snakemake-job-execution-profile)
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
-    * [bam](#bam)
-    * [counts](#counts)
-    * [variants](#variants)
-    * [fixvariants](#fixvariants)
-    * [haplotype](#haplotype)
+         * [bam](#bam)
+         * [counts](#counts)
+         * [variants](#variants)
+         * [fixvariants](#fixvariants)
+         * [haplotype](#haplotype)
 
 ## Obtaining
 Clone this repository using Git:
@@ -51,7 +51,8 @@ NOTE - you only have to do this for the first pass of the entire pipeline, as af
 Next, go to the config.yaml file and enter the locations for the input_data, out and MELT directories, sample names and MELT parameters. 
 
 Then, invoke the pipeline using the following code:
-``` snakemake *COMMAND* --profile *NAME_OF_SNAKEMAKE_PROFILE_DIR* --use-conda --use-singularity -j *NUMBER_OF_PARALLEL_JOBS_TO_SUBMIT*
+``` 
+snakemake *COMMAND* --profile *NAME_OF_SNAKEMAKE_PROFILE_DIR* --use-conda --use-singularity -j *NUMBER_OF_PARALLEL_JOBS_TO_SUBMIT*
 ```
 Where ```--use singularity``` is only relevant for the *variants* command as Manta and Wham docker containers are used. 
 
