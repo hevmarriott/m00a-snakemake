@@ -9,7 +9,7 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
    * [Steps after running each module](#steps-after-running-each-module)
-4. DAG of workflow
+4. [DAG of workflow](#dag-of-workflow) 
    * [counts](#counts)
    * [variants](#variants)
    * [fixvariants](#fixvariants)
