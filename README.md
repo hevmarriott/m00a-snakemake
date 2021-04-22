@@ -22,7 +22,8 @@ Clone this repository using Git:
 ## Requirements
 - Snakemake installed via Conda in a standalone environment - [link to recommended installation](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html)
    * NOTE - this environment takes up 1.1 Gigabytes of disk storage
-- A Google Cloud service account to access the public GATK-SV resource buckets
+- A Google Cloud service account to access the public GATK-SV resource buckets and a dedicated Google Cloud Storage Bucket
+   * NOTE - with Cromwell, underscores in the storage bucket name are not permitted
 - Snakemake profile for submitting many parallel jobs via the SLURM cluster
    * NOTE - this should be created in the m00a-snakemake/ directory
 
@@ -35,6 +36,8 @@ If you have multiple accounts (i.e. your own personal gmail account and service 
 ```
 gcloud config set account `NAME_OF_SERVICE_ACCOUNT@PROJECT_NAME.iam.gserviceaccount.com`
 ```
+
+Next, ensure that [billing is enabled](https://cloud.google.com/billing/docs/how-to/modify-project)for your project that the service account is linked to, and that the Cloud Life Sciences, Compute Engine and Cloud Storage APIs are enabled.
 
 ### How to create a Snakemake job execution profile
 First, cookiecutter needs to be installed via conda in the activated snakemake environment:
@@ -75,17 +78,12 @@ When you have all the appropriate files, you then need to upload them to Google 
 
 If you do not have a bucket, you can create one under your service account by performing:
 ``` 
-gsutil mb gs://my_bucket 
+gsutil mb gs://my-bucket 
 ```
-and then setting the location of the bucket to us-central1 by performing:
-```
-gsutil mb -l US-CENTRAL1 on gs://my_bucket
-```
-
 Once the bucket is created, you can then move the files i.e. delly.vcf.gz and index to your bucket:
 ```
 cd out_dir/results/
-gsutil mv delly/* gs://my_bucket
+gsutil mv delly/* gs://my-bucket
 ```
 
 ## DAG of workflow
