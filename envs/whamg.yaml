@@ -1,6 +1,0 @@
-channels:
-  - bioconda
-
-dependencies:
-  - wham=1.8.0
-  - samtools=1.11
