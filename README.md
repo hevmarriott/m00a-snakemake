@@ -37,7 +37,7 @@ If you have multiple accounts (i.e. your own personal gmail account and service 
 gcloud config set account `NAME_OF_SERVICE_ACCOUNT@PROJECT_NAME.iam.gserviceaccount.com`
 ```
 
-Next, ensure that [billing is enabled](https://cloud.google.com/billing/docs/how-to/modify-project)for your project that the service account is linked to, and that the Cloud Life Sciences, Compute Engine and Cloud Storage APIs are enabled.
+Next, ensure that [billing is enabled](https://cloud.google.com/billing/docs/how-to/modify-project) for your project that the service account is linked to, and that the Cloud Life Sciences, Compute Engine and Cloud Storage APIs are enabled.
 
 ### How to create a Snakemake job execution profile
 First, cookiecutter needs to be installed via conda in the activated snakemake environment:
