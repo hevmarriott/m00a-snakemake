@@ -9,7 +9,7 @@ Snakemake workflow for executing the entirety of GATK-SV Module00a on a local Sl
 3. [Usage](#usage)
    * [Sub-Module Descriptions](#sub-module-descriptions)
    * [Steps after running each module](#steps-after-running-each-module)
-4. [DAG of workflow](#dag-of-workflow) 
+4. [DAG of Workflow Modules with Subcommand Memory Allocation](#dag-of-workflow-modules-with-subcommand-memory-allocation) 
    * [counts](#counts)
    * [variants](#variants)
    * [fixvariants](#fixvariants)
@@ -86,14 +86,33 @@ cd out_dir/results/
 gsutil mv delly/* gs://my-bucket
 ```
 
-## DAG of workflow
-The workflows below specify the input dependencies and output of each command. The advantage to using snakemake is that if a file did not generate output due to a failure with the cluster etc., then by invoking the command again, Snakemake will automatically decipher on which remaining files need to be generated, without duplicating outputs.
+## DAG of Workflow Modules with Subcommand Memory Allocation
+The workflows below specify the input dependencies and output of each command, as well as the memory and thread allocation in the Snakefile for each subcommand. The advantage to using snakemake is that if a file did not generate output due to a failure with the cluster etc., then by invoking the command again, Snakemake will automatically decipher on which remaining files need to be generated, without duplicating outputs.
 
 ### counts
 ![alt text](https://github.com/hevmarriott/m00a-snakemake/blob/main/counts.PNG)
+
+* CramToBam: 16GB, 4 threads
+* CollectCounts: 12GB, 1 thread
+* CountsToIntervals: 1GB, 1 thread
+* PESRCollection: 4GB, 1 thread
+
 ### variants
 ![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/variants.PNG)
+
+* runDelly: 16GB, 1 thread
+* runManta: 4GB, 8 threads
+* runMELT: 32GB, 1 thread
+* runWhamg: 32GB, 8 threads
 ### fixvariants
 ![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/fixvariants.PNG)
+
+* Dellybcf2vcf: 4GB, 1 thread
+* MELTFixOutput: 1GB, 1 thread
+* WhamgOutput: 4GB, 4 threads
+* WhamgFixOutput: 1GB, 1 thread
+
 ### haplotype
 ![alttext](https://github.com/hevmarriott/m00a-snakemake/blob/main/haplotype.PNG)
+
+* Module00cGVCF: 16GB, 16 threads
