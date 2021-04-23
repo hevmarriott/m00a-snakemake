@@ -63,13 +63,13 @@ Where ```--use singularity``` is only relevant for the *variants* command as Man
 ### Sub-Module Descriptions
 Below are descriptions for each command in the workflow, with the parallel job allocation and approximate storage usage listed when running the pipeline with 10 samples at a time. This will enable you to easily scale the workflow in accordance to any storage and job scheduler limits. 
 
-| Command | Description | Job allocation with 10 Samples | Storage usage with 10 Samples | 
-| --- | --- | --- | --- |
-| bam | Converts cram input to bam format necessary for functioning of the entire workflow | -j 10 | 550 GB
-| counts | Performs split-read and paired-read evidence collection on the bam files as well as collecting the binned read counts and generating count interval lists | -j 20 | 12 GB
-| variants | Runs Delly, Manta, MELT and Whamg variant callers on the bam files | -j 40 | 46.5 MB
-| fixvariants | Converts Delly to VCF output and reformats Whamg and Melt headers | -j 30 | N/A 
-| haplotype | Runs GATK Haplotype Caller on the bam files to obtain GVCFs which can be used to generate B allele frequency in Module00c | -j 10 | 120 GB
+| Command | Description | Job allocation with 10 Samples | Storage usage with 10 Samples | Clock Time with 10 Samples | 
+| --- | --- | --- | --- | --- | 
+| bam | Converts cram input to bam format necessary for functioning of the entire workflow | -j 10 | 550 GB | 1 hour | 
+| counts | Performs split-read and paired-read evidence collection on the bam | *  files as well as collecting the binned read counts and generating count interval lists | -j 20 | 12 GB | 1 hour
+| variants | Runs Delly, Manta, MELT and Whamg variant callers on the bam files | -j 40 | 46.5 MB | 18-21 hours
+| fixvariants | Converts Delly to VCF output and reformats Whamg and Melt headers | -j 30 | N/A | < 1 minute
+| haplotype | Runs GATK Haplotype Caller on the bam files to obtain GVCFs which can be used to generate B allele frequency in Module00c | -j 10 | 120 GB | 24-30 hours
 
 ### After running each sub-module
 You will find that after passing the first batch of samples through the pipeline, new subdirectories appear in the out_directory location in addition to those in the results directory. These include the aforementioned gatk-sv resource folders which are there for future running of the workflow without need to authenticate, but also a benchmarks folder. Within this, there is a folder for each step of the workflow, and subsequent files for each sample which documents the wall and CPU time of the job as well as various memory usage  and request metrics. More importantly, these are only created after the job has completed, which means that the creation of files is also one way to measure if the files for each sample are fully complete. 
