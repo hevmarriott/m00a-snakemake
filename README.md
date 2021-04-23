@@ -66,7 +66,7 @@ Below are descriptions for each command in the workflow, with the parallel job a
 | Command | Description | Job allocation with 10 Samples | Storage usage with 10 Samples | Clock Time with 10 Samples | 
 | --- | --- | --- | --- | --- | 
 | bam | Converts cram input to bam format necessary for functioning of the entire workflow | -j 10 | 550 GB | 1 hour | 
-| counts | Performs split-read and paired-read evidence collection on the bam | *  files as well as collecting the binned read counts and generating count interval lists | -j 20 | 12 GB | 1 hour
+| counts | Performs split-read and paired-read evidence collection on the bam files as well as collecting the binned read counts and generating count interval lists | -j 20 | 12 GB | 1 hour
 | variants | Runs Delly, Manta, MELT and Whamg variant callers on the bam files | -j 40 | 46.5 MB | 18-21 hours
 | fixvariants | Converts Delly to VCF output and reformats Whamg and Melt headers | -j 30 | N/A | < 1 minute
 | haplotype | Runs GATK Haplotype Caller on the bam files to obtain GVCFs which can be used to generate B allele frequency in Module00c | -j 10 | 120 GB | 24-30 hours
