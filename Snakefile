@@ -271,7 +271,7 @@ rule runManta:
     benchmark:
         "benchmarks/runManta/{sample}.tsv"
     singularity:
-        "docker://gatksv/manta:8645aa"
+        "docker://hevmarriott/manta:v1.6"
     threads: 8
     resources:
         mem_mb=4000,
