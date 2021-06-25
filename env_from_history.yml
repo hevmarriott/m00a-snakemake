@@ -1,0 +1,19 @@
+name: /cvmfs/softdrive.nl/kooyman/sv
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - manta==1.6.0
+  - delly==0.8.7
+  - samblaster==0.1.24
+  - gridss==2.11.1
+  - bwa==0.7.15
+  - r
+  - r-base
+  - survivor==1.0.6
+  - samtools==1.12
+  - bcftools==1.12
+  - bowtie2
+  - tbb==2020.2
+prefix: /cvmfs/softdrive.nl/kooyman/sv
