@@ -27,8 +27,9 @@ cat result/SVA.final_comp.vcf | grep "^#" > "result/${sample}.header.txt"
 cat result/SVA.final_comp.vcf | grep -v "^#" > "result/${sample}.sva.vcf"
 cat result/LINE1.final_comp.vcf | grep -v "^#" > "result/${sample}.line1.vcf"
 cat result/ALU.final_comp.vcf | grep -v "^#" > "result/${sample}.alu.vcf"
-cat result/${sample}.header.txt result/${sample}.sva.vcf result/${sample}.line1.vcf result/${sample}.alu.vcf | perl $vcfsort -c | bgzip -c > {sample}.melt_fix.vcf.gz
-tabix -p vcf {sample}.melt_fix.vcf.gz
+cat result/${sample}.header.txt result/${sample}.sva.vcf result/${sample}.line1.vcf result/${sample}.alu.vcf | perl $vcfsort -c | bgzip -c > ${sample}.melt_fix.vcf.gz
+tabix -p vcf ${sample}.melt_fix.vcf.gz
 
 rm -rf result
-rm ${input1}.crai
+rm ${input1}.crai *.disc.bai *.disc *.fq
+

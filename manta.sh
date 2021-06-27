@@ -18,5 +18,5 @@ cp manta/results/variants/* .
 bgzip -c diploidSV.vcf > ${sample}.manta.vcf.gz
 tabix -p vcf ${sample}.manta.vcf.gz
 
-rm -rf manta
+rm -rf manta diploidSV.vcf*
 rm ${input1}.crai
