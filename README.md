@@ -35,9 +35,9 @@ conda env create -f env_full.yml
 
 Statistics of core hours and memory used per samplein a pilot run.
 
-|Tool   |       N|Core hours mean|Core hours max|Core hours stddev| memory max(MB)| memory mean(MB)|
-|-------|--------|---------------|---|---|---|---|
-|delly  |30.0    |14.0  |  26.5   | 3.5     |5727  |5457|
-|manta  |29.0    |11.8  | 27.8   | 3.7     |468   |308|
-|melt   |30.0    |9.4   | 14.5   | 2.1     |3066  |2487|
-|whamg  |30.0    |3.8   | 4.4    | 0.3     |14404 |7728|
+|Tool   |       N|Core hours mean|Core hours max|Core hours stddev| memory max(MB)| memory mean(MB)|mean output size MB
+|-------|--------|---------------|---|---|---|---|---|
+|delly  |30.0    |14.0  |  26.5   | 3.5     |5727  |5457|3.3|
+|manta  |29.0    |11.8  | 27.8   | 3.7     |468   |308|9.4|
+|melt   |30.0    |9.4   | 14.5   | 2.1     |3066  |2487|0.15|
+|whamg  |30.0    |3.8   | 4.4    | 0.3     |14404 |7728|0.3|
