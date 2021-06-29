@@ -11,13 +11,17 @@ melt_dir="/cvmfs/softdrive.nl/kooyman/sv/resource/MELTv2.2.2"
 mean_chrom_length=40000000
 vcfsort="/cvmfs/softdrive.nl/kooyman/sv/resource/vcf-sort.pl"
 
+insertsize=$(samtools stats ${input1}  chr1:200000-400000 |grep ^SN |grep "insert size average:"|grep -oP "[0-9.]+"|cut -f 1 -d ".")
+readlength=$(samtools stats ${input1}  chr1:200000-400000 |grep ^SN |grep -P "average length"|grep -oP "[0-9.]+"|cut -f 1 -d ".")
+
+
 mkdir -p result
 ls ${melt_dir}/me_refs/Hg38/*zip | sed 's/\*//g' > result/transposon_reference_list         
 java -Xmx12000m -jar ${melt_dir}/MELT.jar Single \
 -bamfile ${input1} \
 -h /cvmfs/softdrive.nl/projectmine_sw/resources/Build38/hs38DH/hs38DH.fa \
--r 150 \
--e 500 \
+-r $readlength \
+-e $insertsize \
 -d $mean_chrom_length \
 -t result/transposon_reference_list \
 -n ${melt_dir}/add_bed_files/Hg38/Hg38.genes.bed \
