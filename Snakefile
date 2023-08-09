@@ -11,13 +11,19 @@ GS = GSRemoteProvider()
 GS_REFERENCE_PREFIX = "gcp-public-data--broad-references"
 GS_RESOURCES_PREFIX = "gatk-sv-resources-public"
 
+# common parameters
+primary_contigs_list = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/primary_contigs.list"
 reference_fasta = GS_REFERENCE_PREFIX + "/hg38/v0/Homo_sapiens_assembly38.fasta"
 reference_index = GS_REFERENCE_PREFIX + "/hg38/v0/Homo_sapiens_assembly38.fasta.fai"
 reference_dict = GS_REFERENCE_PREFIX + "/hg38/v0/Homo_sapiens_assembly38.dict"
+
+# coverage inputs
 preprocessed_intervals = (
     GS_RESOURCES_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/preprocessed_intervals.interval_list"
 )
+
+# manta inputs
 manta_region_bed = (
     GS_REFERENCE_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/primary_contigs_plus_mito.bed.gz"
@@ -26,6 +32,38 @@ manta_region_bed_index = (
     GS_REFERENCE_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/primary_contigs_plus_mito.bed.gz.tbi"
 )
+
+# PESR inputs 
+sd_locs_vcf = (
+    GS_REFERENCE_PREFIX
+    + "/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf"
+)
+
+# MELT inputs
+melt_standard_vcf_header = (
+    GS_RESOURCES_PREFIX
+    + "/hg38/v0/sv-resources/resources/v1/melt_standard_vcf_header.txt"
+) 
+
+#melt_metrics_intervals = config[]
+#insert_size = config[]
+#read_length = config[]
+#coverage = config[]
+#metrics_intervals = config[]
+#pct_chimeras = config[]
+#total_reads = config[]
+#pf_reads_improper_pairs = config[]
+
+# WHAM inputs
+wham_include_list_bed_file = (
+    GS_REFERENCE_PREFIX 
+    + "/hg38/v0/sv-resources/resources/v1/wham_whitelist.bed"
+) 
+
+# module metrics parameters 
+primary_contigs_fai = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/contig.fai"
+# NEED THE BASELINE VCFs - OPTIONAL FOR METRICS 
+
 # checking_directory_structure
 cram_dir = config["cram_dir"]
 out_dir = config["out_dir"]
@@ -56,6 +94,8 @@ rule bam:
 rule counts:
     input:
         expand(counts_dir + "{sample}.counts.tsv.gz", sample=sample_name) + expand(
+            counts_dir + "condensed_counts.{sample}.tsv.gz", sample=sample_name
+        ) + expand (
             counts_dir + "{sample}.counts_intervals.interval_list", sample=sample_name
         ) + expand(pesr_dir + "{sample}.disc.txt.gz", sample=sample_name) + expand(
             pesr_dir + "{sample}.disc.txt.gz.tbi", sample=sample_name
@@ -110,6 +150,8 @@ rule haplotype:
         expand(module00cgvcf_dir + "{sample}.g.vcf.gz", sample=sample_name) + expand(
             module00cgvcf_dir + "{sample}.g.vcf.gz.tbi", sample=sample_name
         ),
+
+# need to create a rule for scramble
             
 rule CramToBam:
     input:
@@ -131,7 +173,6 @@ rule CramToBam:
         samtools view -b -h -@ {threads} -T {input[0]} -o {output.bam_file} {input.cram_file}
         samtools index -@ {threads} {output.bam_file}
         """
-
 
 rule CollectCounts:
     input:
@@ -155,17 +196,39 @@ rule CollectCounts:
         mem_mb=12000,
     shell:
         """
-        gatk --java-options "-Xmx10024m" CollectReadCounts -I {input.bam_file} --read-index {input.bam_index} -R {input[0]} -L {input[3]} --format TSV --interval-merging-rule OVERLAPPING_ONLY -O {params.temp}
+        gatk --java-options "-Xmx10024m" CollectReadCounts --input {input.bam_file} --read-index {input.bam_index} --reference {input[0]} -L {input[3]} --format TSV --interval-merging-rule OVERLAPPING_ONLY -O {params.temp} --disable-read-filter MappingQualityReadFilter 
         sed -ri "s/@RG\tID:GATKCopyNumber\tSM:.+/@RG\tID:GATKCopyNumber\tSM:{params.sample}/g" {params.temp}
         bgzip {params.temp}
         """
 
+rule CondenseReadCounts:
+    input:
+        counts = rules.CollectCounts.output.counts_file
+    output: 
+        condensed_counts = counts_dir + "condensed_counts.{sample}.tsv.gz"
+    benchmark:
+        "benchmarks/CondenseReadCounts/{sample}.tsv"
+    params:
+        sample="{sample}"
+    threads: 1
+    resources:
+        mem_mb = 3000
+    conda:
+        "envs/gatk.yaml"
+    shell:
+        """
+        zcat {input.counts} | grep '^@' | grep -v '@RG' > ref.dict
+        zcat {input.counts} | grep -v '^@' | sed -e 1d | awk 'BEGIN{FS=OFS="\t";print "#Chr\tStart\tEnd\tNA21133"}{print $1,$2-1,$3,$4}' | bgzip > in.rd.txt.gz
+        tabix -0 -s1 -b2 -e3 in.rd.txt.gz
+        gatk --java-options -Xmx2g CondenseDepthEvidence -F in.rd.txt.gz -O out.rd.txt.gz --sequence-dictionary ref.dict --max-interval-size 2000 --min-interval-size 101
+        cat ref.dict <(zcat out.rd.txt.gz | awk 'BEGIN{FS=OFS="\t";print "@RG\tID:GATKCopyNumber\tSM:{params.sample}\nCONTIG\tSTART\tEND\tCOUNT"}{if(NR>1)print $1,$2+1,$3,$4}') | \
+        bgzip > {output.condensed_counts}
 
 rule CountsToIntervals:
     input:
         counts=rules.CollectCounts.output.counts_file,
     output:
-        counts_intervals=counts_dir + "{sample}.counts_intervals.interval_list",
+        counts_intervals=counts_dir + "{sample}.interval_list",
     benchmark:
         "benchmarks/CountsToIntervals/{sample}.tsv"
     shell:
@@ -174,7 +237,7 @@ rule CountsToIntervals:
         zgrep -v "^@" {input.counts} | sed -e 1d | awk -F "\t" -v OFS="\t" '{{print $1,$2,$3,"+","."}}' >> {output.counts_intervals}
         """
 
-
+# GOT UP TO HERE
 rule PESRCollection:
     input:
         GS.remote(reference_fasta, keep_local=True),
