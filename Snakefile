@@ -18,9 +18,6 @@ preprocessed_intervals = (
     GS_RESOURCES_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/preprocessed_intervals.interval_list"
 )
-delly_exclude_intervals = (
-    GS_RESOURCES_PREFIX + "/hg38/v0/sv-resources/resources/v1/delly_human.hg38.excl.tsv"
-)
 manta_region_bed = (
     GS_REFERENCE_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/primary_contigs_plus_mito.bed.gz"
@@ -43,7 +40,6 @@ cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
 bam_dir = out_dir + "bam/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr_files/"
-final_delly_dir = out_dir + "delly/"
 final_whamg_dir = out_dir + "whamg/"
 final_melt_dir = out_dir + "melt"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
@@ -75,8 +71,6 @@ rule variants:
         expand(out_dir + "manta/{sample}.manta.vcf.gz", sample=sample_name) + expand(
             out_dir + "manta/{sample}.manta.vcf.gz.tbi", sample=sample_name
         ) + expand(
-            final_delly_dir + "{sample}/{sample}.delly.bcf", sample=sample_name
-        ) + expand(
             final_whamg_dir + "{sample}/{sample}.wham_bad_header_bad_tags.vcf.gz",
             sample=sample_name,
         ) + expand(
@@ -92,14 +86,8 @@ rule variants:
 
 rule fixvariants:
     input:
-        expand(final_delly_dir + "{sample}.delly.vcf.gz", sample=sample_name) + expand(
-            final_delly_dir + "{sample}.delly.vcf.gz.tbi", sample=sample_name
-        ) + expand(
-            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz",
-            sample=sample_name,
-        ) + expand(
-            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz.tbi",
-            sample=sample_name,
+        expand(final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz", sample=sample_name) + expand(
+            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz.tbi", sample=sample_name
         ) + expand(
             final_whamg_dir + "{sample}/{sample}.wham_bad_header.vcf.gz",
             sample=sample_name,
@@ -211,51 +199,6 @@ rule PESRCollection:
         tabix -f -s1 -b 2 -e 2 {output.PE_file}
         tabix -f -s1 -b 2 -e 2 {output.SR_file}
         """
-
-
-rule runDelly:
-    input:
-        GS.remote(reference_fasta, keep_local=True),
-        GS.remote(reference_index, keep_local=True),
-        GS.remote(delly_exclude_intervals, keep_local=True),
-        bam_file=rules.CramToBam.output.bam_file,
-        bam_index=rules.CramToBam.output.bam_index,
-    output:
-        delly_bcf=final_delly_dir + "{sample}/{sample}.delly.bcf",
-    benchmark:
-        "benchmarks/runDelly/{sample}.tsv"
-    conda:
-        "envs/delly.yaml"
-    resources:
-        mem_mb=16000,
-    shell:
-        """
-        delly call -x {input[2]} -o {output.delly_bcf} -g {input[0]} {input.bam_file}
-        """
-
-
-rule Dellybcf2vcf:
-    input:
-        delly_bcf=rules.runDelly.output.delly_bcf,
-    output:
-        delly_vcf=final_delly_dir + "{sample}.delly.vcf.gz",
-        delly_index=final_delly_dir + "{sample}.delly.vcf.gz.tbi",
-    params:
-        temp=final_delly_dir + "{sample}/{sample}.delly.vcf",
-        vcf_sort="resources/vcf-sort.pl",
-    benchmark:
-        "benchmarks/Dellybcf2vcf/{sample}.tsv"
-    conda:
-        "envs/samtools.yaml"
-    resources:
-        mem_mb=4000,
-    shell:
-        """
-        bcftools view {input.delly_bcf} > {params.temp}
-        cat {params.temp} | perl {params.vcf_sort} -c | bgzip -c > {output.delly_vcf}
-        tabix {output.delly_vcf}
-        """
-
 
 rule runManta:
     input:
