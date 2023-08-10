@@ -6,6 +6,7 @@ import os.path
 import glob
 from snakemake.remote.GS import RemoteProvider as GSRemoteProvider
 
+
 # google_bucket_resources
 GS = GSRemoteProvider()
 GS_REFERENCE_PREFIX = "gcp-public-data--broad-references"
@@ -78,7 +79,7 @@ cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
 bam_dir = out_dir + "bam/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr_files/"
-final_whamg_dir = out_dir + "whamg/"
+whamg_dir = out_dir + "whamg/"
 final_melt_dir = out_dir + "melt"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
@@ -115,11 +116,9 @@ rule variants:
         expand(out_dir + "manta/{sample}.manta.vcf.gz", sample=sample_name) + expand(
             out_dir + "manta/{sample}.manta.vcf.gz.tbi", sample=sample_name
         ) + expand(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header_bad_tags.vcf.gz",
-            sample=sample_name,
+            whamg_dir + "{sample}.wham.vcf.gz", sample=sample_name
         ) + expand(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header_bad_tags.vcf.gz.tbi",
-            sample=sample_name,
+            whamg_dir + "{sample}.wham.vcf.gz.tbi", sample=sample_name
         ) + expand(
             final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz", sample=sample_name
         ) + expand(
@@ -127,27 +126,11 @@ rule variants:
             sample=sample_name,
         ),
 
-
 rule fixvariants:
     input:
-        expand(final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz", sample=sample_name) + expand(
-            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz.tbi", sample=sample_name
-        ) + expand(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header.vcf.gz",
-            sample=sample_name,
-        ) + expand(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header.vcf.gz.tbi",
-            sample=sample_name,
-        ) + expand(
-            final_whamg_dir + "{sample}.wham.vcf.gz", sample=sample_name
-        ) + expand(
-            final_whamg_dir + "{sample}.wham.vcf.gz.tbi", sample=sample_name
-        ) + expand(
-            final_melt_dir + "/{sample}.melt.vcf.gz", sample=sample_name
-        ) + expand(
+        expand(final_melt_dir + "/{sample}.melt.vcf.gz", sample=sample_name) + expand(
             final_melt_dir + "/{sample}.melt.vcf.gz.tbi", sample=sample_name
-        ),
-
+        )
 
 rule haplotype:
     input:
@@ -155,7 +138,7 @@ rule haplotype:
             module00cgvcf_dir + "{sample}.g.vcf.gz.tbi", sample=sample_name
         ),
 
-# need to create a rule for scramble
+# need to create a rule for scramble, do module metrics module and rule to include bams without cram conversion
             
 rule CramToBam:
     input:
@@ -269,7 +252,6 @@ rule PESRCollection:
         gatk --java-options "-Xmx3250m" CollectSVEvidence -I {input.bam_file} --sample-name {params.sample} -F {input[2]} -SR {output.SR_file} -PE {output.PE_file} -SD {output.SD_file} --site-depth-min-mapq 6 --site-depth-min-baseq 10 -R {input[0]} -L {input[4]}
         """
 
-
 rule runManta:
     input:
         GS.remote(reference_fasta, keep_local=True),
@@ -301,20 +283,16 @@ rule runManta:
         tabix -p vcf {output.manta_vcf}
         """
 
-#GOT TO HERE
 rule runWhamg:
     input:
         GS.remote(reference_fasta, keep_local=True),
         GS.remote(reference_index, keep_local=True),
+        GS.remote(wham_include_list_bed_file, keep_local=True),
         bam_file=rules.CramToBam.output.bam_file,
         bam_index=rules.CramToBam.output.bam_index,
     output:
-        whamg_bad_tags=(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header_bad_tags.vcf.gz"
-        ),
-        whamg_bad_tags_index=(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header_bad_tags.vcf.gz.tbi"
-        ),
+        whamg_vcf=whamg_dir + "{sample}.wham.vcf.gz",
+        whamg_index=whamg_dir + "{sample}.wham.vcf.gz.tbi"
     benchmark:
         "benchmarks/runWhamg/{sample}.tsv"
     threads: 8
@@ -323,69 +301,29 @@ rule runWhamg:
     singularity:
         "docker://gatksv/wham:8645aa"
     params:
+        sample = "{sample}",
         whamg_c="chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY",
     shell:
         """
-        whamg -c "{params.whamg_c}" -x {threads} -a {input[0]} -f {input.bam_file} | bgzip -c > {output.whamg_bad_tags}
-        tabix -p vcf {output.whamg_bad_tags}
+        mkdir {whamg_dir}/{params.sample}_temp
+        cd {whamg_dir}/{params.sample}_temp
+        awk 'BEGIN{FS=OFS="\t"}{printf("%07d\t%s\n",NR,$1":"$2"-"$3)}' {input[2]} |\
+          while read -r line interval; do
+            vcfFile="$line.wham.vcf.gz"
+            whamg -c "{params.whamg_c} -x {threads} -a {input[0]} -f {input.bam_file} -r $interval | bgzip -c > $vcfFile
+            bcftools index -t $vcfFile
+          done
+
+        ls -1 *.wham.vcf.gz > vcf.list
+        bcftools concat -a -Ov -f vcf.list | sed -e 's/^#CHROM\t.*/#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{params.sample}/' -e 's/;TAGS=[^;]*;/;TAGS={params.sample};/' | bgzip -c > {output.whamg_vcf}
+        cd ..
+        bcftools index -t {output.whamg_vcf}
+
+        df -h
+        ls -l
         """
 
-
-rule WhamgOutput:
-    input:
-        whamg_bad_tags=rules.runWhamg.output.whamg_bad_tags,
-        whamg_bad_tags_index=rules.runWhamg.output.whamg_bad_tags_index,
-    output:
-        annotation_file=(
-            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz"
-        ),
-        annotation_file_index=(
-            final_whamg_dir + "{sample}/{sample}.tags_annotation_file.tsv.gz.tbi"
-        ),
-        whamg_bad_header=final_whamg_dir + "{sample}/{sample}.wham_bad_header.vcf.gz",
-        whamg_bad_header_index=(
-            final_whamg_dir + "{sample}/{sample}.wham_bad_header.vcf.gz.tbi"
-        ),
-    params:
-        sample="{sample}",
-    benchmark:
-        "benchmarks/WhamgOutput/{sample}.tsv"
-    conda:
-        "envs/samtools.yaml"
-    resources:
-        mem_mb=4000,
-    threads: 4
-    shell:
-        """
-        bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t{params.sample}\n' {input.whamg_bad_tags} | bgzip -c > {output.annotation_file}
-        tabix -f -s1 -b2 -e2 {output.annotation_file}
-        bcftools annotate -a {output.annotation_file} -c CHROM,POS,REF,ALT,INFO/TAGS {input.whamg_bad_tags} | bgzip -c > {output.whamg_bad_header}
-        tabix -p vcf {output.whamg_bad_header}
-        """
-
-
-rule WhamgFixOutput:
-    input:
-        GS.remote(reference_index, keep_local=True),
-        whamg_bad_header=rules.WhamgOutput.output.whamg_bad_header,
-    output:
-        whamg_vcf=final_whamg_dir + "{sample}.wham.vcf.gz",
-        wham_index=final_whamg_dir + "{sample}.wham.vcf.gz.tbi",
-    params:
-        sample="{sample}",
-        contigs_pattern="^chr1\t|^chr2\t|^chr3\t|^chr4\t|^chr5\t|^chr6\t|^chr7\t|^chr8\t|^chr9\t|^chr10\t|^chr11\t|^chr12\t|^chr13\t|^chr14\t|^chr15\t|^chr16\t|^chr17\t|^chr18\t|^chr19\t|^chr20\t|^chr21\t|^chr22\t|^chrX\t|^chrY\t",
-    benchmark:
-        "benchmarks/WhamgFixOutput/{sample}.tsv"
-    conda:
-        "envs/samtools.yaml"
-    shell:
-        """
-        OLD_HEADER=$(bcftools view -h {input.whamg_bad_header} | grep -v '##contig=')
-        CONTIGS_HEADER=$(grep "{params.contigs_pattern}" -P {input[0]} | awk '{{print "##contig=<ID=" $1 ",length=" $2 ">"}}')
-        bcftools reheader -h <( echo "$OLD_HEADER" | sed \$d ; echo "$CONTIGS_HEADER" ; echo "$OLD_HEADER" | tail -n 1) -s <( echo "{params.sample}") {input.whamg_bad_header} > {output.whamg_vcf}
-        tabix {output.whamg_vcf}
-        """
-
+#GOT TO HERE
 rule runMELT:
     input:
         GS.remote(reference_fasta, keep_local=True),
