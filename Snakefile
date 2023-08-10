@@ -97,12 +97,16 @@ rule counts:
             counts_dir + "condensed_counts.{sample}.tsv.gz", sample=sample_name
         ) + expand (
             counts_dir + "{sample}.counts_intervals.interval_list", sample=sample_name
-        ) + expand(pesr_dir + "{sample}.disc.txt.gz", sample=sample_name) + expand(
-            pesr_dir + "{sample}.disc.txt.gz.tbi", sample=sample_name
+        ) + expand(pesr_dir + "{sample}.pe.txt.gz", sample=sample_name) + expand(
+            pesr_dir + "{sample}.pe.txt.gz.tbi", sample=sample_name
         ) + expand(
-            pesr_dir + "{sample}.split.txt.gz", sample=sample_name
+            pesr_dir + "{sample}.sr.txt.gz", sample=sample_name
         ) + expand(
-            pesr_dir + "{sample}.split.txt.gz.tbi", sample=sample_name
+            pesr_dir + "{sample}.sr.txt.gz.tbi", sample=sample_name
+        ) + expand(
+            pesr_dir + "{sample}.sd.txt.gz", sample=sample_name
+        ) + expand(
+            pesr_dir + "{sample}.sr.txt.gz.tbi", sample=sample_name
         ),
 
 
@@ -237,17 +241,21 @@ rule CountsToIntervals:
         zgrep -v "^@" {input.counts} | sed -e 1d | awk -F "\t" -v OFS="\t" '{{print $1,$2,$3,"+","."}}' >> {output.counts_intervals}
         """
 
-# GOT UP TO HERE
 rule PESRCollection:
     input:
         GS.remote(reference_fasta, keep_local=True),
         GS.remote(reference_dict, keep_local=True),
+        GS.remote(sd_locs_vcf, keep_local=True),
+        GS.remote(preprocessed_intervals, keep_local=True),
+        GS.remote(primary_contigs_list, keep_local=True),
         bam_file=rules.CramToBam.output.bam_file,
     output:
-        PE_file=pesr_dir + "{sample}.disc.txt.gz",
-        PE_file_index=pesr_dir + "{sample}.disc.txt.gz.tbi",
-        SR_file=pesr_dir + "{sample}.split.txt.gz",
-        SR_file_index=pesr_dir + "{sample}.split.txt.gz.tbi",
+        PE_file=pesr_dir + "{sample}.pe.txt.gz",
+        PE_file_index=pesr_dir + "{sample}.pe.txt.gz.tbi",
+        SR_file=pesr_dir + "{sample}.sr.txt.gz",
+        SR_file_index=pesr_dir + "{sample}.sr.txt.gz.tbi",
+        SD_file=pesr_dir + "{sample}.sd.txt.gz",
+        SD_index=pesr_dir + "{sample}.sd.txt.gz.tbi",
     benchmark:
         "benchmarks/PESRCollection/{sample}.tsv"
     conda:
@@ -258,10 +266,9 @@ rule PESRCollection:
         sample="{sample}",
     shell:
         """
-        gatk --java-options "-Xmx3250m" PairedEndAndSplitReadEvidenceCollection -I {input.bam_file} --pe-file {output.PE_file} --sr-file {output.SR_file} --sample-name {params.sample} -R {input[0]}
-        tabix -f -s1 -b 2 -e 2 {output.PE_file}
-        tabix -f -s1 -b 2 -e 2 {output.SR_file}
+        gatk --java-options "-Xmx3250m" CollectSVEvidence -I {input.bam_file} --sample-name {params.sample} -F {input[2]} -SR {output.SR_file} -PE {output.PE_file} -SD {output.SD_file} --site-depth-min-mapq 6 --site-depth-min-baseq 10 -R {input[0]} -L {input[4]}
         """
+
 
 rule runManta:
     input:
@@ -294,7 +301,7 @@ rule runManta:
         tabix -p vcf {output.manta_vcf}
         """
 
-
+#GOT TO HERE
 rule runWhamg:
     input:
         GS.remote(reference_fasta, keep_local=True),
@@ -378,7 +385,6 @@ rule WhamgFixOutput:
         bcftools reheader -h <( echo "$OLD_HEADER" | sed \$d ; echo "$CONTIGS_HEADER" ; echo "$OLD_HEADER" | tail -n 1) -s <( echo "{params.sample}") {input.whamg_bad_header} > {output.whamg_vcf}
         tabix {output.whamg_vcf}
         """
-
 
 rule runMELT:
     input:
