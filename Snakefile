@@ -345,11 +345,12 @@ rule runMELTInputMetrics:
     params:
         sample = "{sample}",
         metrics_base = out_dir + "/multiple_metrics"
+        read_length=config["mean_read_length"],
     shell:
         """
         gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}_{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
         --PROGRAM CollectInsertSizeMetrics --PROGRAM CollectSequencingArtifactMetrics --PROGRAM CollectGcBiasMetrics --PROGRAM QualityScoreDistribution --METRIC_ACCUMULATION_LEVEL null --METRIC_ACCUMULATION_LEVEL SAMPLE
-        gatk --java-options -Xmx3250m CollectWgsMetrics --INPUT {input.bam_file} --VALIDATION_STRINGENCY SILENT --REFERENCE_SEQUENCE {input[0]} --INCLUDE_BQ_HISTOGRAM true --OUTPUT {params.metrics_base}_{params.sample}_wgs_metrics.txt --USE_FAST_ALGORITHM true
+        gatk --java-options -Xmx3250m CollectWgsMetrics --INPUT {input.bam_file} --VALIDATION_STRINGENCY SILENT --REFERENCE_SEQUENCE {input[0]} --READ_LENGTH {params.mean_read_length} --INCLUDE_BQ_HISTOGRAM true --OUTPUT {params.metrics_base}_{params.sample}_wgs_metrics.txt --USE_FAST_ALGORITHM true
         """
 
 rule runMELT:
