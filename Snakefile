@@ -323,7 +323,33 @@ rule runWhamg:
         ls -l
         """
 
-#GOT TO HERE
+#GOT TO HERE - THINK I MIGHT NEED COLLECT COVERAGE FILES
+#coverage = value of MEAN_COVERAGE from CollectWgsMetrics
+#read_length = MEAN_READ_LENGTH from CollectAlignmentSummaryMetrics
+#insert_size = MEAN_INSERT_SIZE from CollectInsertSizeMetrics
+
+rule runMELTInputMetrics:
+    input:
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        bam_file=rules.CramToBam.output.bam_file,
+    output:
+        multiple_metrics_file = ?
+    benchmark:
+        "benchmarks/runMELTInputMetrics/{sample}.tsv"
+    resources:
+        mem_mb=4000, 
+    conda:
+        "envs/gatk.yaml"
+    params:
+        sample = "{sample}",
+        metrics_base = out_dir + "/multiple_metrics"
+    shell:
+        """
+        gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}_{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
+        --PROGRAM CollectInsertSizeMetrics --PROGRAM CollectSequencingArtifactMetrics --PROGRAM CollectGcBiasMetrics --PROGRAM QualityScoreDistribution --METRIC_ACCUMULATION_LEVEL null --METRIC_ACCUMULATION_LEVEL SAMPLE
+        """
+
 rule runMELT:
     input:
         GS.remote(reference_fasta, keep_local=True),
