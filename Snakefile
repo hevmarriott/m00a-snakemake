@@ -210,6 +210,7 @@ rule CondenseReadCounts:
         gatk --java-options -Xmx2g CondenseDepthEvidence -F in.rd.txt.gz -O out.rd.txt.gz --sequence-dictionary ref.dict --max-interval-size 2000 --min-interval-size 101
         cat ref.dict <(zcat out.rd.txt.gz | awk 'BEGIN{FS=OFS="\t";print "@RG\tID:GATKCopyNumber\tSM:{params.sample}\nCONTIG\tSTART\tEND\tCOUNT"}{if(NR>1)print $1,$2+1,$3,$4}') | \
         bgzip > {output.condensed_counts}
+        """
 
 rule CountsToIntervals:
     input:
