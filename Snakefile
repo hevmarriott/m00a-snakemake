@@ -98,17 +98,19 @@ rule counts:
             counts_dir + "condensed_counts.{sample}.tsv.gz", sample=sample_name
         ) + expand (
             counts_dir + "{sample}.counts_intervals.interval_list", sample=sample_name
-        ) + expand(pesr_dir + "{sample}.pe.txt.gz", sample=sample_name) + expand(
-            pesr_dir + "{sample}.pe.txt.gz.tbi", sample=sample_name
-        ) + expand(
+        ) + expand(pesr_dir + "{sample}.pe.txt.gz", sample=sample_name),
+
+
+rule pesr:
+    input:
+        expand(pesr_dir + "{sample}.pe.txt.gz.tbi", sample=sample_name) + expand(
             pesr_dir + "{sample}.sr.txt.gz", sample=sample_name
         ) + expand(
             pesr_dir + "{sample}.sr.txt.gz.tbi", sample=sample_name
         ) + expand(
             pesr_dir + "{sample}.sd.txt.gz", sample=sample_name
         ) + expand(
-            pesr_dir + "{sample}.sr.txt.gz.tbi", sample=sample_name
-        ),
+            pesr_dir + "{sample}.sd.txt.gz.tbi", sample=sample_name),
 
 
 rule variants:
