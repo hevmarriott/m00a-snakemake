@@ -80,6 +80,7 @@ bam_dir = out_dir + "bam/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr/"
 whamg_dir = out_dir + "whamg/"
+multiple_metrics_dir = out_dir + "multiple_metrics/"
 final_melt_dir = out_dir + "melt"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
@@ -344,8 +345,10 @@ rule runMELTInputMetrics:
         GS.remote(reference_index, keep_local=True),
         bam_file=rules.CramToBam.output.bam_file,
     output:
-        coverage_file = 
-        
+        alignment_file = multiple_metrics_dir + "{sample}.alignment_summary_metrics",
+        insert_file = multiple_metrics_dir + "{sample}.insert_size_metrics",
+        quality_file = multiple_metrics_dir + "{sample}.quality_distribution_metrics",
+        wgs_metrics_file = multiple_metrics_dir + "{sample}_wgs_metrics.txt"
     benchmark:
         "benchmarks/runMELTInputMetrics/{sample}.tsv"
     resources:
@@ -354,11 +357,11 @@ rule runMELTInputMetrics:
         "envs/gatk.yaml"
     params:
         sample = "{sample}",
-        metrics_base = out_dir + "/multiple_metrics"
+        metrics_base = out_dir + "multiple_metrics"
         read_length=config["mean_read_length"],
     shell:
         """
-        gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}_{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
+        gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}/{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
         --PROGRAM CollectInsertSizeMetrics --PROGRAM CollectSequencingArtifactMetrics --PROGRAM CollectGcBiasMetrics --PROGRAM QualityScoreDistribution --METRIC_ACCUMULATION_LEVEL null --METRIC_ACCUMULATION_LEVEL SAMPLE
         gatk --java-options -Xmx3250m CollectWgsMetrics --INPUT {input.bam_file} --VALIDATION_STRINGENCY SILENT --REFERENCE_SEQUENCE {input[0]} --READ_LENGTH {params.mean_read_length} --INCLUDE_BQ_HISTOGRAM true --OUTPUT {params.metrics_base}_{params.sample}_wgs_metrics.txt --USE_FAST_ALGORITHM true
         """
