@@ -200,7 +200,10 @@ rule CondenseReadCounts:
     benchmark:
         "benchmarks/CondenseReadCounts/{sample}.tsv"
     params:
-        sample="{sample}"
+        sample="{sample}",
+        temp_in_rd=DNAscan_results_dir + "counts/{sample}.in.rd.txt.gz",
+        temp_out_rd=DNAscan_results_dir + "counts/{sample}.out.rd.txt.gz",
+        temp_ref_dict=DNAscan_results_dir + "counts/{sample}.ref.dict"
     threads: 1
     resources:
         mem_mb = 3000
@@ -208,12 +211,14 @@ rule CondenseReadCounts:
         "envs/gatk.yaml"
     shell:
         """
-        zcat {input.counts} | grep '^@' | grep -v '@RG' > ref.dict
-        zcat {input.counts} | grep -v '^@' | sed -e 1d | awk 'BEGIN{FS=OFS="\t";print "#Chr\tStart\tEnd\tNA21133"}{print $1,$2-1,$3,$4}' | bgzip > in.rd.txt.gz
-        tabix -0 -s1 -b2 -e3 in.rd.txt.gz
-        gatk --java-options -Xmx2g CondenseDepthEvidence -F in.rd.txt.gz -O out.rd.txt.gz --sequence-dictionary ref.dict --max-interval-size 2000 --min-interval-size 101
-        cat ref.dict <(zcat out.rd.txt.gz | awk 'BEGIN{FS=OFS="\t";print "@RG\tID:GATKCopyNumber\tSM:{params.sample}\nCONTIG\tSTART\tEND\tCOUNT"}{if(NR>1)print $1,$2+1,$3,$4}') | \
-        bgzip > {output.condensed_counts}
+        zcat {input.counts} | grep '^@' | grep -v '@RG' > {params.temp_ref_dict}
+        zcat {input.counts} | grep -v '^@' | sed -e 1d | awk 'BEGIN{{FS=OFS="\t";print "#Chr\tStart\tEnd\tNA21133"}}{{print $1,$2-1,$3,$4}}' | bgzip > {params.temp_in_rd}
+        tabix -0 -s1 -b2 -e3 {params.temp_in_rd}
+        gatk --java-options -Xmx2g CondenseDepthEvidence -F {params.temp_in_rd} -O {params.temp_out_rd} --sequence-dictionary {params.temp_ref_dict} --max-interval-size 2000 --min-interval-size 101
+        cat {params.temp_ref_dict} <(zcat {params.temp_out_rd} | awk 'BEGIN{{FS=OFS="\t";print "@RG\tID:GATKCopyNumber\tSM:{params.sample}\\nCONTIG\tSTART\tEND\tCOUNT"}}{{if(NR>1)print $1,$2+1,$3,$4}}') | bgzip > {output.condensed_counts}
+        rm {params.temp_ref_dict}
+        rm {params.temp_in_rd}*
+        rm {params.temp_out_rd}*
         """
 
 rule CountsToIntervals:
