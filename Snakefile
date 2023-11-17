@@ -78,7 +78,7 @@ cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
 # creating output_directories
 bam_dir = out_dir + "bam/"
 counts_dir = out_dir + "counts/"
-pesr_dir = out_dir + "pesr_files/"
+pesr_dir = out_dir + "pesr/"
 whamg_dir = out_dir + "whamg/"
 final_melt_dir = out_dir + "melt"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
