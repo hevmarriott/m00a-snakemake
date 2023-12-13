@@ -263,7 +263,7 @@ rule PESRCollection:
         gatk --java-options "-Xmx3250m" CollectSVEvidence -I {input.bam_file} --sample-name {params.sample} -F {input[2]} -SR {output.SR_file} -PE {output.PE_file} -SD {output.SD_file} --site-depth-min-mapq 6 --site-depth-min-baseq 10 -R {input[0]} -L {input[4]}
         """
 
-rule runManta:
+rule runMantastep1:
     input:
         GS.remote(reference_fasta, keep_local=True),
         GS.remote(reference_index, keep_local=True),
@@ -272,15 +272,14 @@ rule runManta:
         bam_file=rules.CramToBam.output.bam_file,
         bam_index=rules.CramToBam.output.bam_index,
     output:
-        manta_vcf=out_dir + "manta/{sample}.manta.vcf.gz",
-        manta_index=out_dir + "manta/{sample}.manta.vcf.gz.tbi",
+        diploid_vcf=out_dir + "manta/{sample}/results/variants/diploidSV.vcf.gz"
     benchmark:
-        "benchmarks/runManta/{sample}.tsv"
+        "benchmarks/runMantastep1/{sample}.tsv"
     singularity:
         "docker://hevmarriott/manta:v1.6"
     threads: 8
     resources:
-        mem_mb=4000,
+        mem_mb=16000,
     params:
         memGb=16,
         sample="{sample}",
@@ -290,6 +289,31 @@ rule runManta:
         /usr/local/bin/manta/bin/configManta.py --bam {input.bam_file} --referenceFasta {input[0]} --runDir {params.manta_run_dir} --callRegions {input[2]}
         {params.manta_run_dir}/runWorkflow.py --mode local --jobs {threads} --memGb {params.memGb}
         python2 /usr/local/bin/manta/libexec/convertInversion.py /usr/local/bin/samtools {input[0]} {params.manta_run_dir}/results/variants/diploidSV.vcf.gz | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
+        bgzip -c {params.manta_run_dir}/results/variants/diploidSV.vcf > {output.manta_vcf}
+        tabix -p vcf {output.manta_vcf}
+        """
+
+rule runMantastep2:
+    input:
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        rules.runMantastep1.output.diploid_vcf,
+    output:
+        manta_vcf=out_dir + "manta/{sample}.manta.vcf.gz",
+        manta_index=out_dir + "manta/{sample}.manta.vcf.gz.tbi",
+    benchmark:
+        "benchmarks/runMantastep2/{sample}.tsv"
+    singularity:
+        "docker://hevmarriott/manta:v1.6"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    params:
+        sample="{sample}",
+        manta_run_dir=out_dir + "manta/{sample}",
+    shell:
+        """
+        python2 /usr/local/bin/manta/libexec/convertInversion.py /usr/local/bin/samtools {input[0]} {input[1]} | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
         bgzip -c {params.manta_run_dir}/results/variants/diploidSV.vcf > {output.manta_vcf}
         tabix -p vcf {output.manta_vcf}
         """
