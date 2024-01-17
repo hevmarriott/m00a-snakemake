@@ -68,6 +68,7 @@ primary_contigs_fai = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/
 # checking_directory_structure
 cram_dir = config["cram_dir"]
 out_dir = config["out_dir"]
+manta_dir = config["manta_dir"]
 melt_dir = config["melt_dir"]
 
 # checking sample names and cram files can be found and read
@@ -275,8 +276,8 @@ rule runMantastep1:
         diploid_vcf=out_dir + "manta/{sample}/results/variants/diploidSV.vcf.gz"
     benchmark:
         "benchmarks/runMantastep1/{sample}.tsv"
-    singularity:
-        "docker://hevmarriott/manta:v1.6"
+    conda:
+        "envs/manta.yaml"
     threads: 8
     resources:
         mem_mb=16000,
@@ -286,11 +287,8 @@ rule runMantastep1:
         manta_run_dir=out_dir + "manta/{sample}",
     shell:
         """
-        /usr/local/bin/manta/bin/configManta.py --bam {input.bam_file} --referenceFasta {input[0]} --runDir {params.manta_run_dir} --callRegions {input[2]}
+        {config[manta_dir]}bin/configManta.py --bam {input.bam_file} --referenceFasta {input[0]} --runDir {params.manta_run_dir} --callRegions {input[2]}
         {params.manta_run_dir}/runWorkflow.py --mode local --jobs {threads} --memGb {params.memGb}
-        python2 /usr/local/bin/manta/libexec/convertInversion.py /usr/local/bin/samtools {input[0]} {params.manta_run_dir}/results/variants/diploidSV.vcf.gz | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
-        bgzip -c {params.manta_run_dir}/results/variants/diploidSV.vcf > {output.manta_vcf}
-        tabix -p vcf {output.manta_vcf}
         """
 
 rule runMantastep2:
@@ -303,8 +301,8 @@ rule runMantastep2:
         manta_index=out_dir + "manta/{sample}.manta.vcf.gz.tbi",
     benchmark:
         "benchmarks/runMantastep2/{sample}.tsv"
-    singularity:
-        "docker://hevmarriott/manta:v1.6"
+    conda:
+        "envs/manta.yaml"
     threads: 8
     resources:
         mem_mb=16000,
@@ -313,7 +311,7 @@ rule runMantastep2:
         manta_run_dir=out_dir + "manta/{sample}",
     shell:
         """
-        python2 /usr/local/bin/manta/libexec/convertInversion.py /usr/local/bin/samtools {input[0]} {input[1]} | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
+        python2 {config[MANTA_DIR]}libexec/convertInversion.py $CONDA_PREFIX/bin/samtools {input[0]} {input[1]} | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
         bgzip -c {params.manta_run_dir}/results/variants/diploidSV.vcf > {output.manta_vcf}
         tabix -p vcf {output.manta_vcf}
         """
