@@ -335,15 +335,16 @@ rule runWhamg:
         "envs/whamg.yaml"
     params:
         sample = "{sample}",
+        whamg_dir_param = whamg_dir,
         whamg_c="chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY",
     shell:
         """
-        mkdir {whamg_dir}/{params.sample}_temp
-        cd {whamg_dir}/{params.sample}_temp
-        awk 'BEGIN{FS=OFS="\t"}{printf("%07d\t%s\n",NR,$1":"$2"-"$3)}' {input[2]} |\
+        mkdir {params.whamg_dir_param}/{params.sample}_temp
+        cd {params.whamg_dir_param}/{params.sample}_temp
+        awk 'BEGIN{{FS=OFS="\t"}}{{printf(\"%07d\\t%s\\n\",NR,$1\":\"$2\"-\"$3)}}' {input[2]} |\
           while read -r line interval; do
             vcfFile="$line.wham.vcf.gz"
-            whamg -c "{params.whamg_c} -x {threads} -a {input[0]} -f {input.bam_file} -r $interval | bgzip -c > $vcfFile
+            whamg -c "{params.whamg_c}" -x {threads} -a {input[0]} -f {input.bam_file} -r $interval | bgzip -c > $vcfFile
             bcftools index -t $vcfFile
           done
 
