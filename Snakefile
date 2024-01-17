@@ -331,8 +331,8 @@ rule runWhamg:
     threads: 8
     resources:
         mem_mb=32000,
-    singularity:
-        "docker://gatksv/wham:8645aa"
+    conda:
+        "envs/whamg.yaml"
     params:
         sample = "{sample}",
         whamg_c="chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY",
