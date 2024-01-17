@@ -5,11 +5,12 @@ cram_dir: input_data/
 
 out_dir: results/
 
-#absolute or relative (does not end in '/')
-melt_dir: tools/MELTv2.2.2
+#absolute (ends in '/')
+manta_dir: tools/manta-1.6.0.centos6_x86_64/
+melt_dir: tools/MELTv2.2.2/
 
 #list format example
-sample_name: ['sample_1', 'sample_2]
+sample_name: ['sample_1', 'sample_2']
 
 #melt_parameters - must be integer
 mean_coverage: 40
