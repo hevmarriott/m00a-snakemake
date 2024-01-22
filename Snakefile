@@ -116,6 +116,17 @@ rule pesr:
         ) + expand(
             pesr_dir + "{sample}.sd.txt.gz.tbi", sample=sample_name),
 
+rule multiplemetrics:
+    input:
+        expand(multiple_metrics_dir + "{sample}.alignment_summary_metrics", sample=sample_name) + expand(
+            multiple_metrics_dir + "{sample}.insert_size_metrics", sample=sample_name
+        ) + expand(
+            multiple_metrics_dir + "{sample}.quality_distribution_metrics", sample=sample_name
+        )
+
+rule wgsmetrics
+    input:
+        expand(multiple_metrics_dir + "{sample}_wgs_metrics.txt", sample=sample_name)
 
 rule variants:
     input:
@@ -262,6 +273,55 @@ rule PESRCollection:
     shell:
         """
         gatk --java-options "-Xmx3250m" CollectSVEvidence -I {input.bam_file} --sample-name {params.sample} -F {input[2]} -SR {output.SR_file} -PE {output.PE_file} -SD {output.SD_file} --site-depth-min-mapq 6 --site-depth-min-baseq 10 -R {input[0]} -L {input[4]}
+        """
+
+rule runMultipleMetrics:
+    input:
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        bam_file=rules.CramToBam.output.bam_file,
+    output:
+        alignment_file = multiple_metrics_dir + "{sample}.alignment_summary_metrics",
+        insert_file = multiple_metrics_dir + "{sample}.insert_size_metrics",
+        quality_file = multiple_metrics_dir + "{sample}.quality_distribution_metrics"
+    benchmark:
+        "benchmarks/runMultipleMetrics/{sample}.tsv",
+    resources:
+        mem_mb=4000
+    conda:
+        "envs/gatk.yaml"
+    params:
+        sample = "{sample}",
+        metrics_base = out_dir + "multiple_metrics"
+    shell:
+        """
+        gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}/{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
+        --PROGRAM CollectInsertSizeMetrics --PROGRAM CollectSequencingArtifactMetrics --PROGRAM CollectGcBiasMetrics --PROGRAM QualityScoreDistribution --METRIC_ACCUMULATION_LEVEL null --METRIC_ACCUMULATION_LEVEL SAMPLE
+        """
+
+rule runWGSMetrics:
+    input:
+        rules.runMultipleMetrics.output.alignment_file,
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        bam_file=rules.CramToBam.output.bam_file
+    output:
+        wgs_metrics_file = multiple_metrics_dir + "{sample}_wgs_metrics.txt"
+    benchmark:
+        "benchmarks/runWGSMetrics/{sample}.tsv"
+    resources:
+        mem_mb=4000
+    conda:
+        "envs/gatk.yaml"
+    params:
+        sample = "{sample}",
+        metrics_base = out_dir + "multiple_metrics"
+    shell:
+        """
+        #extract read length as variable from multiple metrics
+        readLength=$(cat {input[0]} | sed '8q;d' | awk '{{printf "%0.0f", $16}}')
+
+        gatk --java-options -Xmx3250m CollectWgsMetrics --INPUT {input.bam_file} --VALIDATION_STRINGENCY SILENT --REFERENCE_SEQUENCE {input[1]} --READ_LENGTH $readLength --INCLUDE_BQ_HISTOGRAM true --OUTPUT {params.metrics_base}/{params.sample}_wgs_metrics.txt --USE_FAST_ALGORITHM true
         """
 
 rule runMantastep1:
