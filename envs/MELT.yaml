@@ -1,0 +1,9 @@
+channels:
+  - bioconda
+
+dependencies:
+  - tabix
+  - openjdk=8.0.152
+  - bowtie2
+  - samtools=1.9
+  - bcftools
