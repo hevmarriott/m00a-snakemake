@@ -78,11 +78,12 @@ cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
 
 # creating output_directories
 bam_dir = out_dir + "bam/"
+filtered_bam_dir = out_dir + "bam_filtered_MELT/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr/"
 whamg_dir = out_dir + "whamg/"
 multiple_metrics_dir = out_dir + "multiple_metrics/"
-final_melt_dir = out_dir + "melt"
+final_melt_dir = out_dir + "melt/"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
 
@@ -127,6 +128,14 @@ rule multiplemetrics:
 rule wgsmetrics
     input:
         expand(multiple_metrics_dir + "{sample}_wgs_metrics.txt", sample=sample_name)
+
+rule highcoverageintervals:
+    input:
+        expand(final_melt_dir + "{sample}_highCountIntervals.bed", sample=sample_name)
+
+rule filteredbammelt:
+    input:
+        expand(filtered_bam_dir + "{sample}_filtered.bam", sample=sample_name)
 
 rule variants:
     input:
@@ -417,38 +426,46 @@ rule runWhamg:
         ls -l
         """
 
-#GOT TO HERE - THINK I MIGHT NEED COLLECT COVERAGE FILES
-#coverage = value of MEAN_COVERAGE from CollectWgsMetrics
-#read_length = MEAN_READ_LENGTH from CollectAlignmentSummaryMetrics
-#insert_size = MEAN_INSERT_SIZE from CollectInsertSizeMetrics
-
-rule runMELTInputMetrics:
+rule CreateHighCoverageIntervals:
     input:
-        GS.remote(reference_fasta, keep_local=True),
-        GS.remote(reference_index, keep_local=True),
-        bam_file=rules.CramToBam.output.bam_file,
+        rules.CollectCounts.output.counts_file
     output:
-        alignment_file = multiple_metrics_dir + "{sample}.alignment_summary_metrics",
-        insert_file = multiple_metrics_dir + "{sample}.insert_size_metrics",
-        quality_file = multiple_metrics_dir + "{sample}.quality_distribution_metrics",
-        wgs_metrics_file = multiple_metrics_dir + "{sample}_wgs_metrics.txt"
+        high_coverage_intervals = final_melt_dir + "{sample}_highCountIntervals.bed"
     benchmark:
-        "benchmarks/runMELTInputMetrics/{sample}.tsv"
-    resources:
-        mem_mb=4000, 
-    conda:
-        "envs/gatk.yaml"
+        "benchmarks/CreateHighCoverageIntervals/{sample}.tsv"
     params:
-        sample = "{sample}",
-        metrics_base = out_dir + "multiple_metrics"
-        read_length=config["mean_read_length"],
+        threshold = 1000
     shell:
         """
-        gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}/{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
-        --PROGRAM CollectInsertSizeMetrics --PROGRAM CollectSequencingArtifactMetrics --PROGRAM CollectGcBiasMetrics --PROGRAM QualityScoreDistribution --METRIC_ACCUMULATION_LEVEL null --METRIC_ACCUMULATION_LEVEL SAMPLE
-        gatk --java-options -Xmx3250m CollectWgsMetrics --INPUT {input.bam_file} --VALIDATION_STRINGENCY SILENT --REFERENCE_SEQUENCE {input[0]} --READ_LENGTH {params.mean_read_length} --INCLUDE_BQ_HISTOGRAM true --OUTPUT {params.metrics_base}_{params.sample}_wgs_metrics.txt --USE_FAST_ALGORITHM true
+        zgrep -v -E "^@|^CONTIG|^#" {input[0]} | \
+          awk 'BEGIN{{FS=OFS="\t"}}{{if ($4 > {params.threshold}) {{print $1, $2, $3}}}}' > {output.high_coverage_intervals}
         """
 
+rule CreateFilteredBAMMELT:
+    input:
+        rules.CreateHighCoverageIntervals.output.high_coverage_intervals,
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        bam_file=rules.CramToBam.output.bam_file
+    output:
+        filtered_bam=filtered_bam_dir + "{sample}_filtered.bam"
+    benchmark:
+        "benchmarks/CreateFilteredBAMMELT/{sample}.tsv"
+    conda:
+        "envs/gatk.yaml",
+    resources:
+        mem_mb=4000
+    params:
+        interval_padding = 100
+    shell:
+        """
+        gatk  --java-options "-Xmx3250m" PrintReads -XL {input[0]} --interval-exclusion-padding {params.interval_padding} -I {input[3]} -R {input[1]} -O /dev/stdout | \
+        samtools view -h - | awk 'BEGIN{{FS=OFS="\t"}}{{gsub(/[BDHVRYKMSW]/, "N", $10);print}}' | samtools view -b1 - > {output.filtered_bam}
+        samtools index {output.filtered_bam}
+        """
+
+
+#GOT TO THIS RULE
 rule runMELT:
     input:
         GS.remote(reference_fasta, keep_local=True),
