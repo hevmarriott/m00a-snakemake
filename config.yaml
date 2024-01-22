@@ -11,8 +11,3 @@ melt_dir: tools/MELTv2.2.2/
 
 #list format example
 sample_name: ['sample_1', 'sample_2']
-
-#melt_parameters - must be integer
-mean_coverage: 40
-mean_read_length: 150
-mean_insert_size: 400
