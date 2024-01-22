@@ -46,15 +46,6 @@ melt_standard_vcf_header = (
     + "/hg38/v0/sv-resources/resources/v1/melt_standard_vcf_header.txt"
 ) 
 
-#melt_metrics_intervals = config[]
-#insert_size = config[]
-#read_length = config[]
-#coverage = config[]
-#metrics_intervals = config[]
-#pct_chimeras = config[]
-#total_reads = config[]
-#pf_reads_improper_pairs = config[]
-
 # WHAM inputs
 wham_include_list_bed_file = (
     GS_REFERENCE_PREFIX 
@@ -62,8 +53,7 @@ wham_include_list_bed_file = (
 ) 
 
 # module metrics parameters 
-primary_contigs_fai = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/contig.fai"
-# NEED THE BASELINE VCFs - OPTIONAL FOR METRICS 
+primary_contigs_fai = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/contig.fai" 
 
 # checking_directory_structure
 cram_dir = config["cram_dir"]
@@ -74,7 +64,6 @@ melt_dir = config["melt_dir"]
 # checking sample names and cram files can be found and read
 sample_name = config["sample_name"]
 cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
-
 
 # creating output_directories
 bam_dir = out_dir + "bam/"
@@ -117,6 +106,7 @@ rule pesr:
         ) + expand(
             pesr_dir + "{sample}.sd.txt.gz.tbi", sample=sample_name),
 
+
 rule multiplemetrics:
     input:
         expand(multiple_metrics_dir + "{sample}.alignment_summary_metrics", sample=sample_name) + expand(
@@ -125,17 +115,21 @@ rule multiplemetrics:
             multiple_metrics_dir + "{sample}.quality_distribution_metrics", sample=sample_name
         )
 
-rule wgsmetrics
+
+rule wgsmetrics:
     input:
         expand(multiple_metrics_dir + "{sample}_wgs_metrics.txt", sample=sample_name)
+
 
 rule highcoverageintervals:
     input:
         expand(final_melt_dir + "{sample}_highCountIntervals.bed", sample=sample_name)
 
+
 rule filteredbammelt:
     input:
         expand(filtered_bam_dir + "{sample}_filtered.bam", sample=sample_name)
+
 
 rule variants:
     input:
@@ -150,7 +144,8 @@ rule variants:
         ) + expand(
             final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz.tbi",
             sample=sample_name,
-        ),
+        )
+
 
 rule fixvariants:
     input:
@@ -158,14 +153,16 @@ rule fixvariants:
             final_melt_dir + "/{sample}.melt.vcf.gz.tbi", sample=sample_name
         )
 
+
 rule haplotype:
     input:
         expand(module00cgvcf_dir + "{sample}.g.vcf.gz", sample=sample_name) + expand(
             module00cgvcf_dir + "{sample}.g.vcf.gz.tbi", sample=sample_name
         ),
 
-# need to create a rule for scramble, do module metrics module and rule to include bams without cram conversion
-            
+# need to create a rule for scramble, do full module metrics module and rule to include bams without cram conversion
+
+
 rule CramToBam:
     input:
         GS.remote(reference_fasta, keep_local=True),
@@ -465,7 +462,7 @@ rule CreateFilteredBAMMELT:
         """
 
 
-#GOT TO THIS RULE
+#GOT TO THIS RULE - RUN MELT IN TWO PARTS
 rule runMELT:
     input:
         GS.remote(reference_fasta, keep_local=True),
@@ -532,6 +529,13 @@ rule MELTFixOutput:
         tabix -p vcf {output.melt_vcf}
         """
 
+rule Scramble:
+
+
+rule AggregateMetrics:
+
+
+#CHECK IF THIS IS STILL NEEDED
 rule Module00cGVCF:
     input:
         GS.remote(reference_fasta, keep_local=True),
