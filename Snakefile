@@ -46,6 +46,8 @@ melt_standard_vcf_header = (
     + "/hg38/v0/sv-resources/resources/v1/melt_standard_vcf_header.txt"
 ) 
 
+melt_bed_file = config["MELT_DIR"] + "add_bed_files/Hg38/Hg38.genes.bed"
+
 # WHAM inputs
 wham_include_list_bed_file = (
     GS_REFERENCE_PREFIX 
@@ -140,17 +142,10 @@ rule variants:
         ) + expand(
             whamg_dir + "{sample}.wham.vcf.gz.tbi", sample=sample_name
         ) + expand(
-            final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz", sample=sample_name
+            final_melt_dir + "/{sample}.melt.vcf.gz", sample=sample_name
         ) + expand(
-            final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz.tbi",
+            final_melt_dir + "/{sample}.melt.vcf.gz.tbi",
             sample=sample_name,
-        )
-
-
-rule fixvariants:
-    input:
-        expand(final_melt_dir + "/{sample}.melt.vcf.gz", sample=sample_name) + expand(
-            final_melt_dir + "/{sample}.melt.vcf.gz.tbi", sample=sample_name
         )
 
 
@@ -459,6 +454,84 @@ rule CreateFilteredBAMMELT:
         gatk  --java-options "-Xmx3250m" PrintReads -XL {input[0]} --interval-exclusion-padding {params.interval_padding} -I {input[3]} -R {input[1]} -O /dev/stdout | \
         samtools view -h - | awk 'BEGIN{{FS=OFS="\t"}}{{gsub(/[BDHVRYKMSW]/, "N", $10);print}}' | samtools view -b1 - > {output.filtered_bam}
         samtools index {output.filtered_bam}
+        """
+
+rule runMELT:
+    input:
+        rules.runWGSMetrics.output.wgs_metrics_file,
+        rules.runMultipleMetrics.output.alignment_file,
+        rules.runMultipleMetrics.output.insert_file,
+        rules.CreateFilteredBAMMELT.output.filtered_bam,
+        GS.remote(reference_fasta, keep_local=True),
+        GS.remote(reference_index, keep_local=True),
+        melt_bed_file
+    output:
+        sva_vcf=final_melt_dir + "/{sample}/SVA.final_comp.vcf",
+        line1_vcf=final_melt_dir + "/{sample}/LINE1.final_comp.vcf",
+        alu_vcf=final_melt_dir + "/{sample}/ALU.final_comp.vcf"
+    benchmark:
+        "benchmarks/runMELT/{sample}.tsv",
+    resources:
+        mem_mb=36000,
+    conda:
+        "envs/MELT.yaml"
+    params:
+        sample="{sample}",
+        melt_results_dir=final_melt_dir + "/{sample}",
+    shell:
+        """
+        #get the coverage, read_length and insert_size from previous wgs and multiple metrics steps for more accurate MELT result
+        meanCoverage=$(cat {input[0]} | sed '8q;d' | awk '{{printf $2}}')
+        readLength=$(cat {input[1]} | sed '8q;d' | awk '{{printf "%0.0f", $16}}')
+        insertSize=$(cat {input[2]} | sed '8q;d' | awk '{{printf "%0.0f", $6}}')
+
+        #create transposon_reference_list
+        ls {config[MELT_DIR]}/me_refs/Hg38/*zip | sed 's/\*//g' > {params.melt_results_dir}/transposon_reference_list
+        
+        #run MELTv2.2.2
+        java -Xmx32000m -jar {config[MELT_DIR]}/MELT.jar Single -bamfile {input[3]} -h {input[4]} -c $meanCoverage -r $readLength -e $insertSize -d 40000000 -t {params.melt_results_dir}/transposon_reference_list -n {input[6]} -w {params.melt_results_dir}
+        """
+
+rule FixMELTOutput:
+    input:
+        rules.runMELT.output.sva_vcf,
+        rules.runMELT.output.line1_vcf,
+        rules.runMELT.output.alu_vcf,
+        melt_standard_vcf_header,
+        bam_file=rules.CramToBam.output.bam_file
+    output:
+        melt_vcf = final_melt_dir + "/{sample}.melt.vcf.gz",
+        melt_index = final_melt_dir + "/{sample}.melt.vcf.gz.tbi"
+    benchmark:
+        "benchmarks/FixMELTOutput/{sample}.tsv"
+    resources:
+        mem_mb=4000
+    conda:
+        "envs/MELT.yaml"
+    params:
+        sample="{sample}",
+        melt_results_dir = final_melt_dir + "/{sample}",
+        vcf_sort = "resources/vcf-sort.pl",
+        temp_header = "/{sample}_temp_header.txt",
+        temp_vcf = "/{sample}.temp_melt.vcf.gz"
+    shell:
+        """
+        cat {input[0]} | grep "^#" > "{params.melt_results_dir}/{params.sample}.header.txt"
+        cat {input[0]} | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.sva.vcf"
+        cat {input[1]} | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.line1.vcf"
+        cat {input[2]} | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.alu.vcf"
+        cat {params.melt_results_dir}/{params.sample}.header.txt {params.melt_results_dir}/{params.sample}.sva.vcf {params.melt_results_dir}/{params.sample}.line1.vcf {params.melt_results_dir}/{params.sample}.alu.vcf | perl {params.vcf_sort} -c | bgzip -c > {params.melt_results_dir}/{params.sample}.melt_fix.vcf.gz
+        tabix -p vcf {params.melt_results_dir}/{params.sample}.melt_fix.vcf.gz
+
+        vcf_text=$(bgzip -cd {params.melt_results_dir}/{params.sample}.melt_fix.vcf.gz)
+        grep '^#CHR' <<<"$vcf_text" | sed 's|{{basename({input.bam_file}, ".bam")}}|{params.sample}|g' > {params.melt_results_dir}/{params.temp_header}
+        grep -v '^#' <<<"$vcf_text" | sed 's/No Difference/No_Difference/g' >> {params.melt_results_dir}/{params.temp_header}
+        FILEDATE=$(grep -F 'fileDate=' <<<"$vcf_text")
+        cat "{input[3]}" {params.melt_results_dir}/{params.temp_header} | sed "2i$FILEDATE" | bgzip -c > {params.melt_results_dir}/{params.sample}.melt_fix.vcf.gz
+        mv {params.melt_results_dir}/{params.sample}.melt_fix.vcf.gz {params.melt_results_dir}/{params.temp_vcf}
+        bcftools reheader -s <( echo "{params.sample}") {params.melt_results_dir}/{params.temp_vcf} > {output.melt_vcf}
+        rm {params.melt_results_dir}/{params.temp_vcf}
+        tabix -p vcf {output.melt_vcf}
         """
 
 
