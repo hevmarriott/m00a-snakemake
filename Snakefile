@@ -75,6 +75,7 @@ pesr_dir = out_dir + "pesr/"
 whamg_dir = out_dir + "whamg/"
 multiple_metrics_dir = out_dir + "multiple_metrics/"
 final_melt_dir = out_dir + "melt/"
+scramble_dir = out_dir + "scramble/"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
 
@@ -132,6 +133,9 @@ rule filteredbammelt:
     input:
         expand(filtered_bam_dir + "{sample}_filtered.bam", sample=sample_name)
 
+rule scramblepart1:
+    input:
+        expand(scramble_dir + "{sample}.scramble_clusters.tsv.gz", sample=sample_name)
 
 rule variants:
     input:
@@ -534,76 +538,31 @@ rule FixMELTOutput:
         tabix -p vcf {output.melt_vcf}
         """
 
-
-#GOT TO THIS RULE - RUN MELT IN TWO PARTS
-rule runMELT:
+rule ScramblePart1:
     input:
         GS.remote(reference_fasta, keep_local=True),
-        GS.remote(reference_index, keep_local=True),
-        bam_file=rules.CramToBam.output.bam_file,
-        melt_bed_file=melt_dir + "/add_bed_files/Hg38/Hg38.genes.bed",
+        GS.remote(primary_contigs_list, keep_local=True),
+        bam_file=rules.CramToBam.output.bam_file
     output:
-        melt_fix_vcf=final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz",
-        melt_fix_index=final_melt_dir + "/{sample}/{sample}.melt_fix.vcf.gz.tbi",
+        clusters_file = scramble_dir + "{sample}.scramble_clusters.tsv.gz"
     benchmark:
-        "benchmarks/runMELT/{sample}.tsv"
+        "benchmarks/ScramblePart1/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/markw/scramble:mw-scramble-99af4c50"
     resources:
-        mem_mb=32000,
-    conda:
-        "envs/manta_melt.yaml"
+        mem_mb=2000
     params:
-        coverage=config["mean_coverage"],
-        read_length=config["mean_read_length"],
-        insert_size=config["mean_insert_size"],
-        mean_chrom_length=40000000,
-        sample="{sample}",
-        melt_results_dir=final_melt_dir + "/{sample}",
-        vcf_sort="resources/vcf-sort.pl",
+        sample = "{sample}"
     shell:
         """
-        ls {melt_dir}/me_refs/Hg38/*zip | sed 's/\*//g' > {params.melt_results_dir}/transposon_reference_list         
-        java -Xmx12000m -jar {melt_dir}/MELT.jar Single -bamfile {input.bam_file} -h {input[0]} -c {params.coverage} -r {params.read_length} -e {params.insert_size} -d {params.mean_chrom_length} -t {params.melt_results_dir}/transposon_reference_list -n {input.melt_bed_file} -w {params.melt_results_dir}
-        cat {params.melt_results_dir}/SVA.final_comp.vcf | grep "^#" > "{params.melt_results_dir}/{params.sample}.header.txt"
-        cat {params.melt_results_dir}/SVA.final_comp.vcf | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.sva.vcf"
-        cat {params.melt_results_dir}/LINE1.final_comp.vcf | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.line1.vcf"
-        cat {params.melt_results_dir}/ALU.final_comp.vcf | grep -v "^#" > "{params.melt_results_dir}/{params.sample}.alu.vcf"
-        cat {params.melt_results_dir}/{params.sample}.header.txt {params.melt_results_dir}/{params.sample}.sva.vcf {params.melt_results_dir}/{params.sample}.line1.vcf {params.melt_results_dir}/{params.sample}.alu.vcf | perl {params.vcf_sort} -c | bgzip -c > {output.melt_fix_vcf}
-        tabix -p vcf {output.melt_fix_vcf} 
+        # Identify clusters of split reads
+        while read region; do
+          time /app/scramble-gatk-sv/cluster_identifier/src/build/cluster_identifier -l -r "$region" -t {input[0]} {input.bam_file} \
+            | gzip >> {output.clusters_file}
+        done < {input[1]}
         """
 
-
-rule MELTFixOutput:
-    input:
-        melt_vcf_header="resources/melt_standard_vcf_header.txt",
-        bam_file=rules.CramToBam.output.bam_file,
-        melt_fix_vcf=rules.runMELT.output.melt_fix_vcf,
-    output:
-        melt_vcf=final_melt_dir + "/{sample}.melt.vcf.gz",
-        melt_index=final_melt_dir + "/{sample}.melt.vcf.gz.tbi",
-    params:
-        sample="{sample}",
-        melt_results_dir=final_melt_dir + "/{sample}",
-        temp_header="/{sample}_temp_header.txt",
-        temp_vcf="/{sample}.temp_melt_vcf.gz",
-    benchmark:
-        "benchmarks/MELTFixOutput/{sample}.tsv"
-    conda:
-        "envs/manta_melt.yaml"
-    shell:
-        """
-        vcf_text=$(bgzip -cd {input.melt_fix_vcf})
-        grep '^#CHR' <<<"$vcf_text" | sed 's|{{basename({input.bam_file}, ".bam")}}|{params.sample}|g' > {params.melt_results_dir}/{params.temp_header}
-        grep -v '^#' <<<"$vcf_text" | sed 's/No Difference/No_Difference/g' >> {params.melt_results_dir}/{params.temp_header}
-        FILEDATE=$(grep -F 'fileDate=' <<<"$vcf_text")
-        cat "{input.melt_vcf_header}" {params.melt_results_dir}/{params.temp_header} | sed "2i$FILEDATE" | bgzip -c > {input.melt_fix_vcf}
-        mv {input.melt_fix_vcf} {params.melt_results_dir}/{params.temp_vcf}
-        bcftools reheader -s <( echo "{params.sample}") {params.melt_results_dir}/{params.temp_vcf} > {output.melt_vcf}  
-        rm {params.melt_results_dir}/{params.temp_vcf}
-        tabix -p vcf {output.melt_vcf}
-        """
-
-rule Scramble:
-
+rule ScramblePart2:
 
 rule AggregateMetrics:
 
