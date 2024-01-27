@@ -3,6 +3,7 @@ configfile: "config.yaml"
 
 import os
 import os.path
+import sys
 import glob
 from snakemake.remote.GS import RemoteProvider as GSRemoteProvider
 
@@ -29,6 +30,7 @@ manta_region_bed = (
     GS_REFERENCE_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/primary_contigs_plus_mito.bed.gz"
 )
+
 manta_region_bed_index = (
     GS_REFERENCE_PREFIX
     + "/hg38/v0/sv-resources/resources/v1/primary_contigs_plus_mito.bed.gz.tbi"
@@ -46,9 +48,9 @@ melt_standard_vcf_header = (
     + "/hg38/v0/sv-resources/resources/v1/melt_standard_vcf_header.txt"
 ) 
 
-melt_bed_file = config["MELT_DIR"] + "add_bed_files/Hg38/Hg38.genes.bed"
+melt_bed_file = config["melt_dir"] + "add_bed_files/Hg38/Hg38.genes.bed"
 
-# WHAM inputs
+# whamg inputs
 wham_include_list_bed_file = (
     GS_REFERENCE_PREFIX 
     + "/hg38/v0/sv-resources/resources/v1/wham_whitelist.bed"
@@ -69,13 +71,14 @@ cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
 
 # creating output_directories
 bam_dir = out_dir + "bam/"
-filtered_bam_dir = out_dir + "bam_filtered_MELT/"
+filtered_bam_dir = out_dir + "filtered_bam_MELT/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr/"
 whamg_dir = out_dir + "whamg/"
-multiple_metrics_dir = out_dir + "multiple_metrics/"
+multiple_metrics_dir = out_dir + "gatk_metrics/"
 final_melt_dir = out_dir + "melt/"
 scramble_dir = out_dir + "scramble/"
+sample_metrics_dir = out_dir + "sample_metrics/"
 module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
 
@@ -116,41 +119,61 @@ rule multiplemetrics:
             multiple_metrics_dir + "{sample}.insert_size_metrics", sample=sample_name
         ) + expand(
             multiple_metrics_dir + "{sample}.quality_distribution_metrics", sample=sample_name
-        )
+        ),
 
 
 rule wgsmetrics:
     input:
-        expand(multiple_metrics_dir + "{sample}_wgs_metrics.txt", sample=sample_name)
+        expand(multiple_metrics_dir + "{sample}_wgs_metrics.txt", sample=sample_name),
 
 
-rule highcoverageintervals:
-    input:
-        expand(final_melt_dir + "{sample}_highCountIntervals.bed", sample=sample_name)
-
-
-rule filteredbammelt:
-    input:
-        expand(filtered_bam_dir + "{sample}_filtered.bam", sample=sample_name)
-
-rule scramblepart1:
-    input:
-        expand(scramble_dir + "{sample}.scramble_clusters.tsv.gz", sample=sample_name)
-
-rule variants:
+rule manta:
     input:
         expand(out_dir + "manta/{sample}.manta.vcf.gz", sample=sample_name) + expand(
-            out_dir + "manta/{sample}.manta.vcf.gz.tbi", sample=sample_name
+            out_dir + "manta/{sample}.manta.vcf.gz.tbi", sample=sample_name),
+
+
+rule melt:
+    input:
+        expand(final_melt_dir + "{sample}.melt.vcf.gz", sample=sample_name) + expand(
+            final_melt_dir + "{sample}.melt.vcf.gz.tbi", sample=sample_name),
+
+
+rule scramble:
+    input:
+        expand(scramble_dir + "{sample}.scramble.vcf.gz", sample=sample_name) + expand(
+            scramble_dir + "{sample}.scramble.vcf.gz.tbi", sample=sample_name),
+
+
+rule whamg:
+    input:
+        expand(whamg_dir + "{sample}.wham.vcf.gz", sample=sample_name) + expand(
+            whamg_dir + "{sample}.wham.vcf.gz.tbi", sample=sample_name),
+
+
+rule samplemetrics:
+    input:
+        expand(sample_metrics_dir + "standardised_vcf/{sample}.manta.std.vcf.gz", sample=sample_name) + expand(
+            sample_metrics_dir + "standardised_vcf/{sample}.melt.std.vcf.gz", sample=sample_name
         ) + expand(
-            whamg_dir + "{sample}.wham.vcf.gz", sample=sample_name
+            sample_metrics_dir + "standardised_vcf/{sample}.scramble.std.vcf.gz", sample=sample_name
         ) + expand(
-            whamg_dir + "{sample}.wham.vcf.gz.tbi", sample=sample_name
+            sample_metrics_dir + "standardised_vcf/{sample}.wham.std.vcf.gz", sample=sample_name
         ) + expand(
-            final_melt_dir + "/{sample}.melt.vcf.gz", sample=sample_name
+            sample_metrics_dir + "vcf_metrics/manta_{sample}.vcf.tsv", sample=sample_name
         ) + expand(
-            final_melt_dir + "/{sample}.melt.vcf.gz.tbi",
-            sample=sample_name,
-        )
+            sample_metrics_dir + "vcf_metrics/melt_{sample}.vcf.tsv", sample=sample_name
+        ) + expand(
+            sample_metrics_dir + "vcf_metrics/scramble_{sample}.vcf.tsv", sample=sample_name
+        ) + expand(
+            sample_metrics_dir + "vcf_metrics/wham_{sample}.vcf.tsv", sample=sample_name
+        ) + expand(
+            sample_metrics_dir + "SR_metrics/{sample}.sr-file.tsv", sample=sample_name
+        ) + expand(
+            sample_metrics_dir + "PE_metrics/{sample}.pe-file.tsv", sample=sample_name
+        ) + expand(
+            sample_metrics_dir + "counts_metrics/{sample}.raw-counts.tsv", sample=sample_name
+        ),
 
 
 rule haplotype:
@@ -159,9 +182,7 @@ rule haplotype:
             module00cgvcf_dir + "{sample}.g.vcf.gz.tbi", sample=sample_name
         ),
 
-# need to create a rule for scramble, do full module metrics module and rule to include bams without cram conversion
-
-
+# main rules that send the outputs to the target rules defined via the command line
 rule CramToBam:
     input:
         GS.remote(reference_fasta, keep_local=True),
@@ -297,7 +318,7 @@ rule runMultipleMetrics:
         "envs/gatk.yaml"
     params:
         sample = "{sample}",
-        metrics_base = out_dir + "multiple_metrics"
+        metrics_base = out_dir + "gatk_metrics"
     shell:
         """
         gatk --java-options -Xmx3250m CollectMultipleMetrics -I {input.bam_file} -O {params.metrics_base}/{params.sample} -R {input[0]} --ASSUME_SORTED true --PROGRAM null --PROGRAM CollectAlignmentSummaryMetrics \
@@ -320,7 +341,7 @@ rule runWGSMetrics:
         "envs/gatk.yaml"
     params:
         sample = "{sample}",
-        metrics_base = out_dir + "multiple_metrics"
+        metrics_base = out_dir + "gatk_metrics"
     shell:
         """
         #extract read length as variable from multiple metrics
