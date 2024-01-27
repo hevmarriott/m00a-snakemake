@@ -398,7 +398,7 @@ rule runMantastep2:
         manta_run_dir=out_dir + "manta/{sample}",
     shell:
         """
-        python2 {config[MANTA_DIR]}libexec/convertInversion.py $CONDA_PREFIX/bin/samtools {input[0]} {input[1]} | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
+        python2 {config[manta_dir]}libexec/convertInversion.py $CONDA_PREFIX/bin/samtools {input[0]} {input[1]} | bcftools reheader -s <(echo "{params.sample}") > {params.manta_run_dir}/results/variants/diploidSV.vcf
         bgzip -c {params.manta_run_dir}/results/variants/diploidSV.vcf > {output.manta_vcf}
         tabix -p vcf {output.manta_vcf}
         """
@@ -512,10 +512,10 @@ rule runMELT:
         insertSize=$(cat {input[2]} | sed '8q;d' | awk '{{printf "%0.0f", $6}}')
 
         #create transposon_reference_list
-        ls {config[MELT_DIR]}/me_refs/Hg38/*zip | sed 's/\*//g' > {params.melt_results_dir}/transposon_reference_list
+        ls {config[melt_dir]}/me_refs/Hg38/*zip | sed 's/\*//g' > {params.melt_results_dir}/transposon_reference_list
         
         #run MELTv2.2.2
-        java -Xmx32000m -jar {config[MELT_DIR]}/MELT.jar Single -bamfile {input[3]} -h {input[4]} -c $meanCoverage -r $readLength -e $insertSize -d 40000000 -t {params.melt_results_dir}/transposon_reference_list -n {input[6]} -w {params.melt_results_dir}
+        java -Xmx32000m -jar {config[melt_dir]}/MELT.jar Single -bamfile {input[3]} -h {input[4]} -c $meanCoverage -r $readLength -e $insertSize -d 40000000 -t {params.melt_results_dir}/transposon_reference_list -n {input[6]} -w {params.melt_results_dir}
         """
 
 rule FixMELTOutput:
