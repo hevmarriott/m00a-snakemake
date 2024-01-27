@@ -182,6 +182,7 @@ rule haplotype:
             module00cgvcf_dir + "{sample}.g.vcf.gz.tbi", sample=sample_name
         ),
 
+
 # main rules that send the outputs to the target rules defined via the command line
 rule CramToBam:
     input:
@@ -584,9 +585,203 @@ rule ScramblePart1:
         """
 
 rule ScramblePart2:
+    input:
+        rules.ScramblePart1.output.clusters_file,
+        GS.remote(reference_fasta, keep_local=True)
+    output:
+        scramble_vcf = scramble_dir + "{sample}.scramble.vcf.gz",
+        scramble_index = scramble_dir + "{sample}.scramble.vcf.gz.tbi"
+    benchmark:
+        "benchmark/ScramblePart2/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/markw/scramble:mw-scramble-99af4c50"
+    threads: 8
+    resources:
+        mem_mb=16000
+    params:
+        sample = "{sample}",
+        xDir = scramble_dir + "{sample}",
+        clusterFile = scramble_dir + "{sample}/{sample}.scramble_clusters.tsv"
+    shell:
+        """
+        mkdir {params.xDir}
+        xDir={params.xDir}
+        clusterFile={params.clusterFile}
+        scrambleDir="/app/scramble-gatk-sv"
+        meiRef=$scrambleDir/cluster_analysis/resources/MEI_consensus_seqs.fa
+        # create a blast db from the reference
+        cat {input[1]} | makeblastdb -in - -parse_seqids -title ref -dbtype nucl -out $xDir/ref
+        gunzip -c {input[0]} > $clusterFile
+        # Produce MEIs.txt
+        Rscript --vanilla $scrambleDir/cluster_analysis/bin/SCRAMble.R --out-name $xDir/clusters --cluster-file $clusterFile --install-dir $scrambleDir/cluster_analysis/bin --mei-refs $meiRef --ref $xDir/ref --no-vcf --eval-meis --cores {threads}
 
-rule AggregateMetrics:
+        # create a header for the output vcf
+        echo -e '##fileformat=VCFv4.3\n##reference={input[1]}\n##source=scramble' > $xDir/{params.sample}.tmp.vcf
 
+        grep '^>' $meiRef | awk \
+        '{{mei=toupper(substr($0,2)); if (mei=="L1") mei="LINE1"
+          print "##ALT=<ID=INS:ME:" mei ",Description=\"" mei " element insertion\">"}}' >> $xDir/{params.sample}.tmp.vcf
+
+        echo -e '##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position of the variant described in this record\">\n##INFO=<ID=SVTYPE,Number=1,Type=String,Description=\"Type of structural variant\">\n##INFO=<ID=SVLEN,Number=1,Type=Integer,Description=\"Difference in length between REF and ALT alleles\">\n##INFO=<ID=ALGORITHMS,Number=.,Type=String,Description=\"Source algorithms\">\n##INFO=<ID=STRANDS,Number=1,Type=String,Description=\"Breakpoint strandedness [++,+-,-+,--]\">' >> $xDir/{params.sample}.tmp.vcf
+        echo -e '##INFO=<ID=CHR2,Number=1,Type=String,Description=\"Chromosome for END coordinate\">\n##INFO=<ID=MEI_START,Number=1,Type=Integer,Description=\"Start of alignment to canonical MEI sequence\">\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">' >> $xDir/{params.sample}.tmp.vcf
+
+        blastdbcmd -db $xDir/ref -entry all -outfmt '##contig=<ID=%a,length=%l>' >> $xDir/{params.sample}.tmp.vcf
+        echo "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	{params.sample}" >> $xDir/{params.sample}.tmp.vcf
+
+        # use awk to write the first part of an awk script that initializes an awk associative array
+        # mapping MEI name onto its consensus sequence length
+        awk \
+        'BEGIN {{ FS=OFS="\t"; print "BEGIN{{" }}
+         /^>/  {{if ( seq != "" ) print "seqLen[\"" seq "\"]=" len; seq = substr($0,2); len = 0}}
+         !/^>/ {{len += length($0)}}
+         END   {{if ( seq != "" ) print "seqLen[\"" seq "\"]=" len; print "}}"}}' $meiRef > $xDir/{params.sample}.awkScript.awk
+
+        # write the rest of the awk script that transforms the contents of the *_MEIs.txt files into a VCF
+        echo \
+        'BEGIN{{ FS=OFS="\t" }}
+        {{ if(FNR<2)next
+          split($1,loc,":")
+          start=loc[2]+1
+          end=start+1
+          len=seqLen[$2]-$10
+          mei=toupper($2); if (mei=="L1") mei="LINE1"
+          print loc[1],start,".","N","<INS:ME:" mei ">",int($6),"PASS",\
+                "END=" end ";SVTYPE=INS;SVLEN=" len ";MEI_START=" $10 ";STRANDS=+-;CHR2=" loc[1] ";ALGORITHMS=scramble",\
+                "GT","0/1" }}' >> $xDir/{params.sample}.awkScript.awk
+
+        # transform the MEI descriptions into VCF lines
+        awk -f $xDir/{params.sample}.awkScript.awk $xDir/clusters_MEIs.txt >> $xDir/{params.sample}.tmp.vcf
+
+        #remove the tabs at the beginning of each line
+        #sed -e 's/^\t*//' $xDir/{params.sample}.tmp.vcf > $xDir/{params.sample}.tmp.vcf
+
+        # sort and index the output VCF
+        bcftools sort -Oz <$xDir/{params.sample}.tmp.vcf >{output.scramble_vcf}
+        bcftools index -ft {output.scramble_vcf}
+        """
+
+rule StandardiseVCF:
+    input:
+        rules.runMantastep2.output.manta_vcf,
+        rules.FixMELTOutput.output.melt_vcf,
+        rules.ScramblePart2.output.scramble_vcf,
+        rules.runWhamg.output.whamg_vcf,
+        GS.remote(primary_contigs_fai, keep_local=True)
+    output:
+        standardised_vcf_manta = sample_metrics_dir + "standardised_vcf/{sample}.manta.std.vcf.gz",
+        standardised_vcf_melt = sample_metrics_dir + "standardised_vcf/{sample}.melt.std.vcf.gz",
+        standardised_vcf_scramble = sample_metrics_dir + "standardised_vcf/{sample}.scramble.std.vcf.gz",
+        standardised_vcf_whamg = sample_metrics_dir + "standardised_vcf/{sample}.wham.std.vcf.gz"
+    benchmark:
+        "benchmarks/StandardiseVCF/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/gatk-sv/sv-pipeline:2024-01-24-v0.28.4-beta-9debd6d7"
+    resources:
+        mem_mb=16000
+    params:
+        sample="{sample}",
+        min_size = 50,
+        base_output_dir = sample_metrics_dir + "standardised_vcf/"
+    shell:
+        """
+        svtk standardize --min-size {params.min_size} --contigs {input[4]} {input[0]} {params.base_output_dir}/{params.sample}.manta.std.vcf "manta"
+        bgzip {params.base_output_dir}/{params.sample}.manta.std.vcf
+        svtk standardize --min-size {params.min_size} --contigs {input[4]} {input[1]} {params.base_output_dir}/{params.sample}.melt.std.vcf "melt"
+        bgzip {params.base_output_dir}/{params.sample}.melt.std.vcf
+        svtk standardize --min-size {params.min_size} --contigs {input[4]} {input[2]} {params.base_output_dir}/{params.sample}.scramble.std.vcf "scramble"
+        bgzip {params.base_output_dir}/{params.sample}.scramble.std.vcf
+        svtk standardize --min-size {params.min_size} --contigs {input[4]} {input[3]} {params.base_output_dir}/{params.sample}.wham.std.vcf "wham"
+        bgzip {params.base_output_dir}/{params.sample}.wham.std.vcf
+        """
+
+rule VCFMetrics:
+    input:
+        rules.StandardiseVCF.output.standardised_vcf_manta,
+        rules.StandardiseVCF.output.standardised_vcf_melt,
+        rules.StandardiseVCF.output.standardised_vcf_scramble,
+        rules.StandardiseVCF.output.standardised_vcf_whamg,       
+        GS.remote(primary_contigs_list, keep_local=True)
+    output:
+        vcf_metrics_manta = sample_metrics_dir + "vcf_metrics/manta_{sample}.vcf.tsv",
+        vcf_metrics_melt = sample_metrics_dir + "vcf_metrics/melt_{sample}.vcf.tsv",
+        vcf_metrics_scramble = sample_metrics_dir + "vcf_metrics/scramble_{sample}.vcf.tsv",
+        vcf_metrics_whamg = sample_metrics_dir + "vcf_metrics/wham_{sample}.vcf.tsv"
+    benchmark:
+        "benchmarks/VCFMetrics/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/gatk-sv/sv-pipeline:2024-01-24-v0.28.4-beta-9debd6d7"
+    resources:
+        mem_mb=16000
+    params:
+        sample = "{sample}",
+        types = "DEL,DUP,INS,INV,BND",
+        types_scramble = "INS",
+        base_samples_list = sample_metrics_dir + "vcf_metrics/"
+    shell:
+        """
+        echo {params.sample} > {params.base_samples_list}/{params.sample}_name_list
+        samplesList="{params.base_samples_list}/{params.sample}_name_list"
+        svtest vcf {input[0]} {input[4]} $samplesList {params.types} "manta_{params.sample}" > {output.vcf_metrics_manta}
+        svtest vcf {input[1]} {input[4]} $samplesList {params.types} "melt_{params.sample}" > {output.vcf_metrics_melt}
+        svtest vcf {input[2]} {input[4]} $samplesList {params.types_scramble} "scramble_{params.sample}" > {output.vcf_metrics_scramble}
+        svtest vcf {input[3]} {input[4]} $samplesList {params.types} "wham_{params.sample}" > {output.vcf_metrics_whamg}
+        """
+
+rule SRMetrics:
+    input:
+        rules.PESRCollection.output.SR_file
+    output:
+        sr_metrics_file = sample_metrics_dir + "SR_metrics/{sample}.sr-file.tsv"
+    resources:
+        mem_mb=4000
+    params:
+        sample = "{sample}",
+        base_samples_list = sample_metrics_dir + "SR_metrics/"
+    shell:
+        """
+        echo {params.sample} > {params.base_samples_list}/{params.sample}_name_list
+        samplesList="{params.base_samples_list}/{params.sample}_name_list"
+        svtest sr-file {input[0]} $samplesList > {output.sr_metrics_file}
+        """
+
+rule PEMetrics:
+    input:
+        rules.PESRCollection.output.PE_file,
+    output:
+        pe_metrics_file = sample_metrics_dir + "PE_metrics/{sample}.pe-file.tsv"
+    benchmark:
+        "benchmarks/PEMetrics/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/gatk-sv/sv-pipeline:2024-01-24-v0.28.4-beta-9debd6d7"
+    resources:
+        mem_mb=4000
+    params:
+        sample = "{sample}",
+        base_samples_list = sample_metrics_dir + "PE_metrics/"
+    shell:
+        """
+        echo {params.sample} > {params.base_samples_list}/{params.sample}_name_list
+        samplesList="{params.base_samples_list}/{params.sample}_name_list"
+        svtest pe-file {input[0]} $samplesList > {output.pe_metrics_file}
+        """
+
+rule CountsMetrics:
+    input:
+        rules.CollectCounts.output.counts_file
+    output:
+        counts_metrics_file = sample_metrics_dir + "counts_metrics/{sample}.raw-counts.tsv"
+    benchmark:
+        "benchmarks/CountsMetrics/{sample}.tsv"
+    singularity:
+        "docker://us.gcr.io/broad-dsde-methods/gatk-sv/sv-pipeline:2024-01-24-v0.28.4-beta-9debd6d7"
+    resources:
+        mem_mb=4000
+    params:
+        sample = "{sample}"
+    shell:
+        """
+        svtest raw-counts {input[0]} {params.sample} > {output.counts_metrics_file}
+        """
 
 #CHECK IF THIS IS STILL NEEDED
 rule Module00cGVCF:
