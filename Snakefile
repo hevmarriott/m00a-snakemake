@@ -60,17 +60,26 @@ wham_include_list_bed_file = (
 primary_contigs_fai = GS_REFERENCE_PREFIX + "/hg38/v0/sv-resources/resources/v1/contig.fai" 
 
 # checking_directory_structure
-cram_dir = config["cram_dir"]
+input_dir = config["input_dir"]
 out_dir = config["out_dir"]
 manta_dir = config["manta_dir"]
 melt_dir = config["melt_dir"]
 
 # checking sample names and cram files can be found and read
 sample_name = config["sample_name"]
-cram_files = expand(cram_dir + "{sample}.cram", sample=sample_name)
+
+if config["input_file_type"] in ["cram"]:
+    input_files = expand(input_dir + "{sample}.cram", sample=sample_name)
+    bam_dir = out_dir + "bam/",
+    bam_file = bam_dir + "{sample}.bam",
+    bam_index = bam_dir + "{sample}.bam.bai"
+else:
+    input_files = expand(input_dir + "{sample}.bam", sample=sample_name),
+    bam_dir = input_dir,
+    bam_file = input_dir + "{sample}.bam",
+    bam_index = input_dir + "{sample}.bam.bai"
 
 # creating output_directories
-bam_dir = out_dir + "bam/"
 filtered_bam_dir = out_dir + "filtered_bam_MELT/"
 counts_dir = out_dir + "counts/"
 pesr_dir = out_dir + "pesr/"
@@ -83,11 +92,12 @@ module00cgvcf_dir = out_dir + "module00c_gvcf/"
 
 
 # pseudo-rule to collect all target files
-rule bam:
-    input:
-        expand(bam_dir + "{sample}.bam", sample=sample_name) + expand(
-            bam_dir + "{sample}.bam.bai", sample=sample_name
-        ),
+if config['input_file_type'] in ["cram"]:
+    rule bam:
+        input:
+            expand(bam_dir + "{sample}.bam", sample=sample_name) + expand(
+                bam_dir + "{sample}.bam.bai", sample=sample_name
+            ),
 
 
 rule counts:
@@ -184,26 +194,27 @@ rule haplotype:
 
 
 # main rules that send the outputs to the target rules defined via the command line
-rule CramToBam:
-    input:
-        GS.remote(reference_fasta, keep_local=True),
-        GS.remote(reference_index, keep_local=True),
-        cram_file=cram_dir + "{sample}.final-gatk.cram",
-    output:
-        bam_file=bam_dir + "{sample}.bam",
-        bam_index=bam_dir + "{sample}.bam.bai",
-    benchmark:
-        "benchmarks/CramToBam/{sample}.tsv"
-    conda:
-        "envs/samtools.yaml"
-    threads: 4
-    resources:
-        mem_mb=16000,
-    shell:
-        """
-        samtools view -b -h -@ {threads} -T {input[0]} -o {output.bam_file} {input.cram_file}
-        samtools index -@ {threads} {output.bam_file}
-        """
+if config['input_file_type'] in ["cram"]:
+    rule CramToBam:
+        input:
+            GS.remote(reference_fasta, keep_local=True),
+            GS.remote(reference_index, keep_local=True),
+            cram_file=input_dir + "{sample}.cram",
+        output:
+            bam_file=bam_dir + "{sample}.bam",
+            bam_index=bam_dir + "{sample}.bam.bai",
+        benchmark:
+            "benchmarks/CramToBam/{sample}.tsv"
+        conda:
+            "envs/samtools.yaml"
+        threads: 4
+        resources:
+            mem_mb=16000,
+        shell:
+            """
+            samtools view -b -h -@ {threads} -T {input[0]} -o {output.bam_file} {input.cram_file}
+            samtools index -@ {threads} {output.bam_file}
+            """
 
 rule CollectCounts:
     input:
