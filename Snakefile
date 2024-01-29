@@ -241,9 +241,9 @@ rule CondenseReadCounts:
         "benchmarks/CondenseReadCounts/{sample}.tsv"
     params:
         sample="{sample}",
-        temp_in_rd=DNAscan_results_dir + "counts/{sample}.in.rd.txt.gz",
-        temp_out_rd=DNAscan_results_dir + "counts/{sample}.out.rd.txt.gz",
-        temp_ref_dict=DNAscan_results_dir + "counts/{sample}.ref.dict"
+        temp_in_rd=counts_dir + "{sample}.in.rd.txt.gz",
+        temp_out_rd=counts_dir + "{sample}.out.rd.txt.gz",
+        temp_ref_dict=counts_dir + "{sample}.ref.dict"
     threads: 1
     resources:
         mem_mb = 3000
