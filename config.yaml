@@ -1,13 +1,15 @@
 #config.yaml
+#list format example
+sample_name: ['sample_1', 'sample_2']
 
 #absolute or relative
-cram_dir: input_data/
+input_dir: input_data/
+
+#can be bam or cram - if cram, the pipeline performs a cram-to-bam step before the main pipeline
+input_file_type: "bam"
 
 out_dir: results/
 
 #absolute (ends in '/')
 manta_dir: tools/manta-1.6.0.centos6_x86_64/
 melt_dir: tools/MELTv2.2.2/
-
-#list format example
-sample_name: ['sample_1', 'sample_2']
